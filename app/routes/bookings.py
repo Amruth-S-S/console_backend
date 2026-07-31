@@ -17,10 +17,13 @@ def serialize(b: dict) -> BookingOut:
         userName=b.get("userName", ""),
         clientName=b.get("clientName", ""),
         clientPhone=b.get("clientPhone", ""),
+        clientEmail=b.get("clientEmail", ""),
         location=b.get("location", ""),
+        packageType=b.get("packageType", "domestic"),
         packageId=b.get("packageId"),
         packageTitle=b.get("packageTitle", ""),
         travelDate=b.get("travelDate", ""),
+        finalPaymentDate=b.get("finalPaymentDate", ""),
         adults=b.get("adults", "1"),
         children=b.get("children", "0"),
         adultPrice=b.get("adultPrice", ""),
@@ -51,10 +54,14 @@ async def resolve_names(user_id: str, package_id: str | None) -> dict:
 
 @router.get("", response_model=list[BookingOut])
 async def list_bookings(user: CurrentUser = Depends(get_current_user)):
-    # Visibility is by createdBy (who actually made this booking), not userId
-    # (who it's assigned to) — admin can assign a booking to any user via the
-    # dropdown without that user gaining the ability to see or touch it.
-    query = {} if user.role == "admin" else {"createdBy": user.id}
+    # Visible if this user made the booking OR it's assigned to them (userId)
+    # — so a booking admin creates and assigns to a user shows up for that
+    # user too. Editing/deleting stays restricted to the creator/admin below.
+    query = (
+        {}
+        if user.role == "admin"
+        else {"$or": [{"createdBy": user.id}, {"userId": user.id}]}
+    )
     items = await bookings_collection.find(query).sort("_id", -1).to_list(500)
     return [serialize(b) for b in items]
 
@@ -62,7 +69,10 @@ async def list_bookings(user: CurrentUser = Depends(get_current_user)):
 @router.get("/{booking_id}", response_model=BookingOut)
 async def get_booking(booking_id: str, user: CurrentUser = Depends(get_current_user)):
     b = await bookings_collection.find_one({"_id": ObjectId(booking_id)})
-    if not b or (user.role != "admin" and b.get("createdBy") != user.id):
+    is_visible = (
+        user.role == "admin" or b.get("createdBy") == user.id or b.get("userId") == user.id
+    ) if b else False
+    if not b or not is_visible:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
     return serialize(b)
 

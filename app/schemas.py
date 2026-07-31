@@ -44,6 +44,7 @@ class PackageCreate(BaseModel):
     logo: str | None = None
     poster: str | None = None
     packageTitle: str = Field(min_length=1, max_length=200)
+    packageType: str = "domestic"
     duration: str = ""
     highlights: list[str] = Field(default_factory=list)
     days: list[PackageDay] = Field(default_factory=list)
@@ -78,9 +79,12 @@ class BookingCreate(BaseModel):
     userId: str
     clientName: str = Field(min_length=1, max_length=120)
     clientPhone: str = Field(min_length=1, max_length=20)
+    clientEmail: str = ""
     location: str = ""
+    packageType: str = "domestic"
     packageId: str | None = None
     travelDate: str = ""
+    finalPaymentDate: str = ""
     adults: str = "1"
     children: str = "0"
     adultPrice: str = ""

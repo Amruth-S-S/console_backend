@@ -17,6 +17,7 @@ def serialize(p: dict) -> PackageOut:
         logo=p.get("logo"),
         poster=p.get("poster"),
         packageTitle=p.get("packageTitle", ""),
+        packageType=p.get("packageType", "domestic"),
         duration=p.get("duration", ""),
         highlights=p.get("highlights", []),
         days=p.get("days", []),
@@ -35,15 +36,14 @@ def serialize(p: dict) -> PackageOut:
 
 @router.get("", response_model=list[PackageOut])
 async def list_packages(user: CurrentUser = Depends(get_current_user)):
-    query = {} if user.role == "admin" else {"createdBy": user.id}
-    items = await packages_collection.find(query).sort("_id", -1).to_list(500)
+    items = await packages_collection.find({}).sort("_id", -1).to_list(500)
     return [serialize(p) for p in items]
 
 
 @router.get("/{package_id}", response_model=PackageOut)
 async def get_package(package_id: str, user: CurrentUser = Depends(get_current_user)):
     p = await packages_collection.find_one({"_id": ObjectId(package_id)})
-    if not p or (user.role != "admin" and p.get("createdBy") != user.id):
+    if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Package not found")
     return serialize(p)
 
@@ -63,7 +63,7 @@ async def update_package(
     package_id: str, body: PackageUpdate, user: CurrentUser = Depends(get_current_user)
 ):
     existing = await packages_collection.find_one({"_id": ObjectId(package_id)})
-    if not existing or (user.role != "admin" and existing.get("createdBy") != user.id):
+    if not existing:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Package not found")
 
     update = body.model_dump()
