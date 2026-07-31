@@ -11,7 +11,13 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str = "admin@example.com"
     ADMIN_PASSWORD: str = "Admin@12345"
     ADMIN_NAME: str = "Super Admin"
-    CORS_ORIGINS: str = "http://localhost:3000"
+    # Falls back to covering both local dev and the deployed frontend so CORS
+    # works without needing a CORS_ORIGINS env var set in the Vercel
+    # dashboard either — set the env var only to override this.
+    CORS_ORIGINS: str = (
+        "http://localhost:3000,http://localhost:3001,"
+        "https://console-ambaaritoursandtravels.vercel.app"
+    )
 
     @property
     def cors_list(self) -> list[str]:
