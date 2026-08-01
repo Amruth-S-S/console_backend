@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from bson import ObjectId
 from pymongo import ReturnDocument
 from ..db import bookings_collection, packages_collection, users_collection
 from ..deps import CurrentUser, get_current_user
+from ..email_utils import send_booking_invoice_email
 from ..schemas import BookingCreate, BookingOut
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -75,6 +76,26 @@ async def get_booking(booking_id: str, user: CurrentUser = Depends(get_current_u
     if not b or not is_visible:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
     return serialize(b)
+
+
+@router.post("/{booking_id}/send-invoice-email", status_code=204)
+async def send_invoice_email(
+    booking_id: str,
+    invoice: UploadFile = File(...),
+    user: CurrentUser = Depends(get_current_user),
+):
+    b = await bookings_collection.find_one({"_id": ObjectId(booking_id)})
+    is_visible = (
+        user.role == "admin" or b.get("createdBy") == user.id or b.get("userId") == user.id
+    ) if b else False
+    if not b or not is_visible:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
+
+    pdf_bytes = await invoice.read()
+    try:
+        await send_booking_invoice_email(serialize(b), pdf_bytes, invoice.filename or "invoice.pdf")
+    except Exception:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Failed to send invoice email")
 
 
 @router.post("", response_model=BookingOut, status_code=201)

@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str = "admin@example.com"
     ADMIN_PASSWORD: str = "Admin@12345"
     ADMIN_NAME: str = "Super Admin"
+    # Gmail account used to send booking confirmation emails (SMTP + app
+    # password, not the account's normal login password).
+    EMAIL_USER: str = ""
+    EMAIL_PASSWORD: str = ""
+    COMPANY_EMAIL: str = "ambaaritoursandtravels19@gmail.com"
     # Falls back to covering both local dev and the deployed frontend so CORS
     # works without needing a CORS_ORIGINS env var set in the Vercel
     # dashboard either — set the env var only to override this.
