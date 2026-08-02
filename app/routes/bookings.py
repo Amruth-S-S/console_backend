@@ -21,6 +21,7 @@ def serialize(b: dict) -> BookingOut:
         location=b.get("location", ""),
         packageType=b.get("packageType", "domestic"),
         packageId=b.get("packageId"),
+        landPackage=b.get("landPackage", ""),
         packageTitle=b.get("packageTitle", ""),
         travelDate=b.get("travelDate", ""),
         finalPaymentDate=b.get("finalPaymentDate", ""),

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 class LoginRequest(BaseModel):
@@ -33,10 +33,25 @@ class TokenResponse(BaseModel):
     user: UserOut
 
 
+class DayImage(BaseModel):
+    src: str
+    caption: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_plain_string(cls, v):
+        # Packages saved before captions existed stored images as plain
+        # data-URL strings — read those in as a captionless image instead
+        # of failing validation on old documents.
+        if isinstance(v, str):
+            return {"src": v, "caption": ""}
+        return v
+
+
 class PackageDay(BaseModel):
     title: str = ""
     desc: str = ""
-    images: list[str] = Field(default_factory=list)
+    images: list[DayImage] = Field(default_factory=list)
 
 
 class PackageCreate(BaseModel):
@@ -83,6 +98,9 @@ class BookingCreate(BaseModel):
     location: str = ""
     packageType: str = "domestic"
     packageId: str | None = None
+    # Internal cost paid to the land vendor for this booking — used to work
+    # out margin on the admin dashboard, never shown on the client invoice.
+    landPackage: str = ""
     travelDate: str = ""
     finalPaymentDate: str = ""
     adults: str = "1"
