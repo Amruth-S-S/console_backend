@@ -17,6 +17,9 @@ class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=20)
+    # Admin-only password reset — omit the field entirely to leave the
+    # password unchanged (see exclude_unset in the update route).
+    password: str | None = Field(default=None, min_length=6, max_length=128)
 
 
 class UserOut(BaseModel):
