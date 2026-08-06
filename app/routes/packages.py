@@ -4,12 +4,12 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from ..db import packages_collection
 from ..deps import CurrentUser, get_current_user
-from ..schemas import PackageCreate, PackageOut, PackageUpdate
+from ..schemas import NetProfitUpdate, PackageCreate, PackageOut, PackageUpdate
 
 router = APIRouter(prefix="/packages", tags=["packages"])
 
 
-def serialize(p: dict) -> PackageOut:
+def serialize(p: dict, *, is_admin: bool = False) -> PackageOut:
     return PackageOut(
         id=str(p["_id"]),
         createdAt=p["createdAt"],
@@ -31,13 +31,17 @@ def serialize(p: dict) -> PackageOut:
         cancellationPolicy=p.get("cancellationPolicy", ""),
         additionalInfo=p.get("additionalInfo", ""),
         termsConditions=p.get("termsConditions", ""),
+        # Blanked out for non-admins regardless of what's actually stored —
+        # this is the one place that decides who ever sees this value.
+        netProfit=p.get("netProfit", "") if is_admin else "",
     )
 
 
 @router.get("", response_model=list[PackageOut])
 async def list_packages(user: CurrentUser = Depends(get_current_user)):
     items = await packages_collection.find({}).sort("_id", -1).to_list(500)
-    return [serialize(p) for p in items]
+    is_admin = user.role == "admin"
+    return [serialize(p, is_admin=is_admin) for p in items]
 
 
 @router.get("/{package_id}", response_model=PackageOut)
@@ -45,7 +49,7 @@ async def get_package(package_id: str, user: CurrentUser = Depends(get_current_u
     p = await packages_collection.find_one({"_id": ObjectId(package_id)})
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Package not found")
-    return serialize(p)
+    return serialize(p, is_admin=user.role == "admin")
 
 
 @router.post("", response_model=PackageOut, status_code=201)
@@ -55,7 +59,7 @@ async def create_package(body: PackageCreate, user: CurrentUser = Depends(get_cu
     doc["createdBy"] = user.id
     res = await packages_collection.insert_one(doc)
     doc["_id"] = res.inserted_id
-    return serialize(doc)
+    return serialize(doc, is_admin=user.role == "admin")
 
 
 @router.put("/{package_id}", response_model=PackageOut)
@@ -66,13 +70,31 @@ async def update_package(
     if not existing:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Package not found")
 
+    # Regular package edits never touch netProfit — PackageUpdate has no such
+    # field, so there's nothing here that could accidentally overwrite it.
     update = body.model_dump()
     res = await packages_collection.find_one_and_update(
         {"_id": ObjectId(package_id)},
         {"$set": update},
         return_document=ReturnDocument.AFTER,
     )
-    return serialize(res)
+    return serialize(res, is_admin=user.role == "admin")
+
+
+@router.put("/{package_id}/net-profit", response_model=PackageOut)
+async def update_net_profit(
+    package_id: str, body: NetProfitUpdate, user: CurrentUser = Depends(get_current_user)
+):
+    if user.role != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required")
+    res = await packages_collection.find_one_and_update(
+        {"_id": ObjectId(package_id)},
+        {"$set": {"netProfit": body.netProfit}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not res:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Package not found")
+    return serialize(res, is_admin=True)
 
 
 @router.delete("/{package_id}", status_code=204)
