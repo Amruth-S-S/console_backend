@@ -73,6 +73,28 @@ async def list_bookings(user: CurrentUser = Depends(get_current_user)):
     return [serialize(b) for b in items]
 
 
+@router.get("/next-invoice-number")
+async def next_invoice_number(user: CurrentUser = Depends(get_current_user)):
+    # Invoice numbers must be unique across the whole business, not just
+    # within whatever slice of bookings this particular account can see.
+    # list_bookings() above filters non-admins down to their own bookings —
+    # so a client-side "max invoice number + 1" computed from that filtered
+    # list let two different staff accounts each land on "0001" the first
+    # time they created a booking, colliding with numbers admin (or other
+    # staff) had already used. Computed here against the *entire* collection
+    # instead, unfiltered by role, so every account gets the same next
+    # number in the one running sequence regardless of who's logged in.
+    items = await bookings_collection.find({}, {"invoiceNumber": 1}).to_list(5000)
+    nums: list[int] = []
+    for b in items:
+        try:
+            nums.append(int(b.get("invoiceNumber", "")))
+        except (TypeError, ValueError):
+            continue
+    next_num = (max(nums) + 1) if nums else 1
+    return {"invoiceNumber": str(next_num).zfill(4)}
+
+
 @router.get("/{booking_id}", response_model=BookingOut)
 async def get_booking(booking_id: str, user: CurrentUser = Depends(get_current_user)):
     b = await bookings_collection.find_one({"_id": ObjectId(booking_id)})
