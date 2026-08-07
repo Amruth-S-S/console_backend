@@ -32,14 +32,31 @@ def serialize(p: dict, *, is_admin: bool = False) -> PackageOut:
         additionalInfo=p.get("additionalInfo", ""),
         termsConditions=p.get("termsConditions", ""),
         # Blanked out for non-admins regardless of what's actually stored —
-        # this is the one place that decides who ever sees this value.
-        netProfit=p.get("netProfit", "") if is_admin else "",
+        # this is the one place that decides who ever sees these values.
+        adultNetProfit=p.get("adultNetProfit", "") if is_admin else "",
+        childNetProfit=p.get("childNetProfit", "") if is_admin else "",
+        infantNetProfit=p.get("infantNetProfit", "") if is_admin else "",
     )
 
 
 @router.get("", response_model=list[PackageOut])
 async def list_packages(user: CurrentUser = Depends(get_current_user)):
-    items = await packages_collection.find({}).sort("_id", -1).to_list(500)
+    # Day images are full base64 photos embedded straight in the document —
+    # across several days times several images each, that's easily tens of
+    # MB per package. The card list never renders them (only poster/logo,
+    # kept below), so a projection excludes them at the query level: Mongo
+    # never even reads that field off disk here, instead of reading it and
+    # then discarding it in Python. This alone took list_packages from ~160s
+    # to near-instant. Editing/previewing/downloading a specific package
+    # still gets the real images, via GET /packages/{id} (unprojected) —
+    # see the frontend's openEdit/openQuickPreview/downloadPackagePdf, which
+    # re-fetch the full package before using it rather than reusing this
+    # trimmed list data.
+    items = (
+        await packages_collection.find({}, {"days.images": 0})
+        .sort("_id", -1)
+        .to_list(500)
+    )
     is_admin = user.role == "admin"
     return [serialize(p, is_admin=is_admin) for p in items]
 
@@ -70,8 +87,9 @@ async def update_package(
     if not existing:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Package not found")
 
-    # Regular package edits never touch netProfit — PackageUpdate has no such
-    # field, so there's nothing here that could accidentally overwrite it.
+    # Regular package edits never touch the net-profit fields — PackageUpdate
+    # has no such fields, so there's nothing here that could accidentally
+    # overwrite them.
     update = body.model_dump()
     res = await packages_collection.find_one_and_update(
         {"_id": ObjectId(package_id)},
@@ -89,7 +107,13 @@ async def update_net_profit(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required")
     res = await packages_collection.find_one_and_update(
         {"_id": ObjectId(package_id)},
-        {"$set": {"netProfit": body.netProfit}},
+        {
+            "$set": {
+                "adultNetProfit": body.adultNetProfit,
+                "childNetProfit": body.childNetProfit,
+                "infantNetProfit": body.infantNetProfit,
+            }
+        },
         return_document=ReturnDocument.AFTER,
     )
     if not res:

@@ -85,15 +85,19 @@ class PackageUpdate(PackageCreate):
 class PackageOut(PackageCreate):
     id: str
     createdAt: str
-    # Admin-only figure — deliberately not part of PackageCreate/PackageUpdate
-    # (never travels through the regular package create/edit flow, which any
+    # Admin-only figures — deliberately not part of PackageCreate/PackageUpdate
+    # (never travel through the regular package create/edit flow, which any
     # logged-in user can hit) and blanked out for non-admin viewers by the
     # route layer regardless of what's actually stored (see packages.py).
-    netProfit: str = ""
+    adultNetProfit: str = ""
+    childNetProfit: str = ""
+    infantNetProfit: str = ""
 
 
 class NetProfitUpdate(BaseModel):
-    netProfit: str = ""
+    adultNetProfit: str = ""
+    childNetProfit: str = ""
+    infantNetProfit: str = ""
 
 
 class AdvancePayment(BaseModel):
@@ -117,14 +121,17 @@ class BookingCreate(BaseModel):
     finalPaymentDate: str = ""
     adults: str = "1"
     children: str = "0"
+    infants: str = "0"
     adultPrice: str = ""
     childPrice: str = ""
+    infantPrice: str = ""
     flightAmount: str = ""
-    # Per-person land cost (mirrors adultPrice/childPrice) — multiplied by
-    # adults/children to get the total land cost for this booking, used on
-    # the admin dashboard's international net-revenue figure.
+    # Per-person land cost (mirrors adultPrice/childPrice/infantPrice) —
+    # multiplied by adults/children/infants to get the total land cost for
+    # this booking, used on the admin dashboard's net-revenue figures.
     adultLandPrice: str = ""
     childLandPrice: str = ""
+    infantLandPrice: str = ""
     advancePayments: list[AdvancePayment] = Field(default_factory=list)
     invoiceNumber: str = ""
     invoiceDate: str = ""
