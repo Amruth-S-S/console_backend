@@ -143,5 +143,6 @@ class BookingOut(BookingCreate):
     id: str
     createdAt: str
     userName: str = ""
+    userEmail: str = ""
     packageTitle: str = ""
     createdBy: str = ""

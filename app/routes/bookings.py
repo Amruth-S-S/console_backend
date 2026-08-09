@@ -15,6 +15,7 @@ def serialize(b: dict) -> BookingOut:
         createdAt=b["createdAt"],
         userId=b.get("userId", ""),
         userName=b.get("userName", ""),
+        userEmail=b.get("userEmail", ""),
         clientName=b.get("clientName", ""),
         clientPhone=b.get("clientPhone", ""),
         clientEmail=b.get("clientEmail", ""),
@@ -56,7 +57,11 @@ async def resolve_names(user_id: str, package_id: str | None) -> dict:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selected package not found")
         package_title = pkg_doc.get("packageTitle", "")
 
-    return {"userName": user_doc.get("name", ""), "packageTitle": package_title}
+    return {
+        "userName": user_doc.get("name", ""),
+        "userEmail": user_doc.get("email", ""),
+        "packageTitle": package_title,
+    }
 
 
 @router.get("", response_model=list[BookingOut])
