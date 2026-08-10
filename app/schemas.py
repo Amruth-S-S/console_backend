@@ -137,6 +137,9 @@ class BookingCreate(BaseModel):
     invoiceDate: str = ""
     amount: str = ""
     transactionId: str = ""
+    # Free-text notes from the client (dietary needs, room preference, etc.)
+    # — shown on page 2 of the invoice alongside the hardcoded terms & conditions.
+    specialRequirements: str = ""
 
 
 class BookingOut(BookingCreate):

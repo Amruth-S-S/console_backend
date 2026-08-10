@@ -41,6 +41,7 @@ def serialize(b: dict) -> BookingOut:
         invoiceDate=b.get("invoiceDate", ""),
         amount=b.get("amount", ""),
         transactionId=b.get("transactionId", ""),
+        specialRequirements=b.get("specialRequirements", ""),
         createdBy=b.get("createdBy", ""),
     )
 
