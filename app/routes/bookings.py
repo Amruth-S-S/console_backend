@@ -42,6 +42,10 @@ def serialize(b: dict) -> BookingOut:
         amount=b.get("amount", ""),
         transactionId=b.get("transactionId", ""),
         specialRequirements=b.get("specialRequirements", ""),
+        aadharDoc=b.get("aadharDoc"),
+        panDoc=b.get("panDoc"),
+        passportDoc=b.get("passportDoc"),
+        otherDocs=b.get("otherDocs", []),
         createdBy=b.get("createdBy", ""),
     )
 
@@ -75,7 +79,19 @@ async def list_bookings(user: CurrentUser = Depends(get_current_user)):
         if user.role == "admin"
         else {"$or": [{"createdBy": user.id}, {"userId": user.id}]}
     )
-    items = await bookings_collection.find(query).sort("_id", -1).to_list(500)
+    # ID document uploads are base64 and can each be a couple MB — same
+    # story as day-images on the packages list (see that route's comment):
+    # the bookings table never renders these, so they're excluded at the
+    # query level rather than fetched and discarded. The edit form re-fetches
+    # the full booking via GET /bookings/{id} before opening, which still
+    # gets them (see the frontend's openEdit).
+    items = (
+        await bookings_collection.find(
+            query, {"aadharDoc": 0, "panDoc": 0, "passportDoc": 0, "otherDocs": 0}
+        )
+        .sort("_id", -1)
+        .to_list(500)
+    )
     return [serialize(b) for b in items]
 
 

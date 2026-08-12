@@ -106,6 +106,16 @@ class AdvancePayment(BaseModel):
     note: str = ""
 
 
+class BookingDocument(BaseModel):
+    name: str = ""
+    type: str = ""
+    # Base64 data URL — same "just embed it in the document" approach as
+    # package images. These are ID docs (small, one-off per booking, never
+    # listed in bulk like packages are), so the GET /packages list-endpoint
+    # slowness this caused there doesn't apply here.
+    data: str = ""
+
+
 class BookingCreate(BaseModel):
     userId: str
     clientName: str = Field(min_length=1, max_length=120)
@@ -140,6 +150,12 @@ class BookingCreate(BaseModel):
     # Free-text notes from the client (dietary needs, room preference, etc.)
     # — shown on page 2 of the invoice alongside the hardcoded terms & conditions.
     specialRequirements: str = ""
+    # ID document uploads — one slot each for Aadhar/PAN/Passport, plus an
+    # open-ended "other documents" list for anything else.
+    aadharDoc: BookingDocument | None = None
+    panDoc: BookingDocument | None = None
+    passportDoc: BookingDocument | None = None
+    otherDocs: list[BookingDocument] = Field(default_factory=list)
 
 
 class BookingOut(BookingCreate):
