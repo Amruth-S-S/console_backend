@@ -150,11 +150,12 @@ class BookingCreate(BaseModel):
     # Free-text notes from the client (dietary needs, room preference, etc.)
     # — shown on page 2 of the invoice alongside the hardcoded terms & conditions.
     specialRequirements: str = ""
-    # ID document uploads — one slot each for Aadhar/PAN/Passport, plus an
-    # open-ended "other documents" list for anything else.
-    aadharDoc: BookingDocument | None = None
-    panDoc: BookingDocument | None = None
-    passportDoc: BookingDocument | None = None
+    # ID document uploads — Aadhar/PAN/Passport each accept one or many
+    # files (e.g. front + back of a card), plus an open-ended "other
+    # documents" list for anything else.
+    aadharDoc: list[BookingDocument] = Field(default_factory=list)
+    panDoc: list[BookingDocument] = Field(default_factory=list)
+    passportDoc: list[BookingDocument] = Field(default_factory=list)
     otherDocs: list[BookingDocument] = Field(default_factory=list)
 
 

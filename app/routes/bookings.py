@@ -9,6 +9,16 @@ from ..schemas import BookingCreate, BookingOut
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
 
+def _as_doc_list(v) -> list:
+    # aadharDoc/panDoc/passportDoc were originally a single document (or
+    # None) before multi-file upload was added — normalizes either shape to
+    # a list so old bookings still validate against the new list[...] field
+    # instead of erroring out.
+    if not v:
+        return []
+    return v if isinstance(v, list) else [v]
+
+
 def serialize(b: dict) -> BookingOut:
     return BookingOut(
         id=str(b["_id"]),
@@ -42,9 +52,9 @@ def serialize(b: dict) -> BookingOut:
         amount=b.get("amount", ""),
         transactionId=b.get("transactionId", ""),
         specialRequirements=b.get("specialRequirements", ""),
-        aadharDoc=b.get("aadharDoc"),
-        panDoc=b.get("panDoc"),
-        passportDoc=b.get("passportDoc"),
+        aadharDoc=_as_doc_list(b.get("aadharDoc")),
+        panDoc=_as_doc_list(b.get("panDoc")),
+        passportDoc=_as_doc_list(b.get("passportDoc")),
         otherDocs=b.get("otherDocs", []),
         createdBy=b.get("createdBy", ""),
     )
