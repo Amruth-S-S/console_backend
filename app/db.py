@@ -6,6 +6,9 @@ db = client[settings.DB_NAME]
 users_collection = db["users"]
 packages_collection = db["packages"]
 bookings_collection = db["bookings"]
+# Small shared app-wide settings (e.g. currency exchange rates) — one
+# document per setting, keyed by _id, not tied to any specific package.
+settings_collection = db["settings"]
 
 
 async def ensure_indexes():

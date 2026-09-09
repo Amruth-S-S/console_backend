@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .db import users_collection, ensure_indexes
 from .security import hash_password
-from .routes import auth, users, packages, bookings
+from .routes import auth, users, packages, bookings, settings as settings_routes
 
 
 async def seed_admin():
@@ -40,6 +40,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(packages.router)
 app.include_router(bookings.router)
+app.include_router(settings_routes.router)
 
 
 @app.get("/health")

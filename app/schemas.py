@@ -54,6 +54,10 @@ class DayImage(BaseModel):
 class PackageDay(BaseModel):
     title: str = ""
     desc: str = ""
+    # Optional — some clients want the itinerary to show actual calendar
+    # dates per day, others deliberately don't (the same saved package gets
+    # reused either way). Blank means "don't show a date for this day".
+    date: str = ""
     images: list[DayImage] = Field(default_factory=list)
 
 
@@ -166,3 +170,15 @@ class BookingOut(BookingCreate):
     userEmail: str = ""
     packageTitle: str = ""
     createdBy: str = ""
+
+
+# Shared, app-wide (not per-package) — one global pair of rates any user
+# can view/update, surfaced via the currency icon on every package card.
+class CurrencyRatesUpdate(BaseModel):
+    thaiRate: str = ""
+    malaysianRate: str = ""
+
+
+class CurrencyRatesOut(CurrencyRatesUpdate):
+    updatedAt: str = ""
+    updatedBy: str = ""
