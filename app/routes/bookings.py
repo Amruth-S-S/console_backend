@@ -160,7 +160,15 @@ async def update_booking(
     booking_id: str, body: BookingCreate, user: CurrentUser = Depends(get_current_user)
 ):
     existing = await bookings_collection.find_one({"_id": ObjectId(booking_id)})
-    if not existing or (user.role != "admin" and existing.get("createdBy") != user.id):
+    # Same ownership rule as list_bookings/get_booking above — createdBy OR
+    # userId, not createdBy alone. A booking admin creates and assigns to a
+    # staff member (the normal flow: pick a user from the dropdown) has
+    # createdBy = admin's id, userId = that staff member's id. Checking only
+    # createdBy meant that staff member could see and open the booking (the
+    # two GET routes already use this same OR) but got "not found" the
+    # moment they tried to save an edit.
+    is_owner = existing and (existing.get("createdBy") == user.id or existing.get("userId") == user.id)
+    if not existing or (user.role != "admin" and not is_owner):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
 
     target_user_id = body.userId if user.role == "admin" else user.id
@@ -180,7 +188,10 @@ async def update_booking(
 async def delete_booking(booking_id: str, user: CurrentUser = Depends(get_current_user)):
     query = {"_id": ObjectId(booking_id)}
     if user.role != "admin":
-        query["createdBy"] = user.id
+        # Same createdBy-OR-userId ownership rule as update_booking above —
+        # was createdBy-only here too, same "assigned to me but I can't
+        # touch it" bug.
+        query["$or"] = [{"createdBy": user.id}, {"userId": user.id}]
     res = await bookings_collection.delete_one(query)
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
