@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
 from pymongo import ReturnDocument
-from ..db import users_collection
+from ..db import roles_collection, users_collection
 from ..deps import CurrentUser, get_current_user
 from ..schemas import UserCreate, UserOut, UserUpdate
 from ..security import hash_password
@@ -14,13 +14,22 @@ def require_admin(user: CurrentUser) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required")
 
 
-def serialize(u: dict) -> UserOut:
+async def role_name_map() -> dict[str, str]:
+    # One query for the whole list, not one lookup per user.
+    roles = await roles_collection.find({}, {"name": 1}).to_list(500)
+    return {str(r["_id"]): r.get("name", "") for r in roles}
+
+
+def serialize(u: dict, roles_by_id: dict[str, str] | None = None) -> UserOut:
+    role_id = u.get("roleId") or ""
     return UserOut(
         id=str(u["_id"]),
         name=u["name"],
         email=u["email"],
         phone=u.get("phone"),
         role=u["role"],
+        roleId=role_id,
+        roleName=(roles_by_id or {}).get(role_id, ""),
     )
 
 
@@ -30,7 +39,8 @@ async def list_users(user: CurrentUser = Depends(get_current_user)):
     # / user-assignment UI reads this list too, it just renders it read-only
     # for non-admins.
     items = await users_collection.find().sort("_id", -1).to_list(500)
-    return [serialize(u) for u in items]
+    roles_by_id = await role_name_map()
+    return [serialize(u, roles_by_id) for u in items]
 
 
 @router.post("", response_model=UserOut, status_code=201)
@@ -45,10 +55,11 @@ async def create_user(body: UserCreate, user: CurrentUser = Depends(get_current_
         "phone": body.phone,
         "password": hash_password(body.password),
         "role": "user",
+        "roleId": body.roleId,
     }
     res = await users_collection.insert_one(doc)
     doc["_id"] = res.inserted_id
-    return serialize(doc)
+    return serialize(doc, await role_name_map())
 
 
 @router.put("/{user_id}", response_model=UserOut)
@@ -59,6 +70,9 @@ async def update_user(
     update = {k: v for k, v in body.model_dump(exclude_unset=True).items()}
     if not update:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No fields to update")
+
+    if "roleId" in update and update["roleId"] is None:
+        update["roleId"] = ""
 
     if "password" in update:
         update["password"] = hash_password(update["password"])
@@ -79,7 +93,7 @@ async def update_user(
     )
     if not updated:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
-    return serialize(updated)
+    return serialize(updated, await role_name_map())
 
 
 @router.delete("/{user_id}", status_code=204)

@@ -11,6 +11,10 @@ class UserCreate(BaseModel):
     email: EmailStr
     phone: str | None = Field(default=None, max_length=20)
     password: str = Field(min_length=6, max_length=128)
+    # Admin-assigned custom role (from the Roles page) — a label, distinct
+    # from the "role" access-control field below (still hardcoded
+    # admin/user for actual permissions). Empty means unassigned.
+    roleId: str = ""
 
 
 class UserUpdate(BaseModel):
@@ -20,6 +24,7 @@ class UserUpdate(BaseModel):
     # Admin-only password reset — omit the field entirely to leave the
     # password unchanged (see exclude_unset in the update route).
     password: str | None = Field(default=None, min_length=6, max_length=128)
+    roleId: str | None = None
 
 
 class UserOut(BaseModel):
@@ -28,6 +33,11 @@ class UserOut(BaseModel):
     email: EmailStr
     phone: str | None = None
     role: str
+    roleId: str = ""
+    # Resolved server-side from roleId (see routes/users.py, routes/auth.py)
+    # so the frontend can gate UI on the role NAME (e.g. "Account") without
+    # a separate roles fetch just to resolve one id.
+    roleName: str = ""
 
 
 class TokenResponse(BaseModel):
@@ -182,3 +192,68 @@ class CurrencyRatesUpdate(BaseModel):
 class CurrencyRatesOut(CurrencyRatesUpdate):
     updatedAt: str = ""
     updatedBy: str = ""
+
+
+# Admin-managed list of role names — one input field (name) for now, per
+# the explicit "create first this, after i give another task" scope.
+class RoleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class RoleOut(RoleCreate):
+    id: str
+    createdAt: str
+
+
+# Accounts ledger entry — visible on the Account menu (admin + users whose
+# assigned custom role is "Account"). debitCredit/paymentMode are free
+# strings rather than enums so the frontend's exact dropdown wording can
+# change without a backend migration.
+class AccountEntryCreate(BaseModel):
+    slNo: str = ""
+    date: str = ""
+    invoiceNo: str = ""
+    agent: str = ""
+    clientName: str = ""
+    destination: str = ""
+    handOverTo: str = ""
+    debitCredit: str = ""  # "Debit" | "Credit"
+    balance: str = ""
+    paymentMode: str = ""  # "Cash" | "UPI" | "Net Banking" | "Cheque"
+    description: str = ""
+
+
+class AccountEntryOut(AccountEntryCreate):
+    id: str
+    createdAt: str
+    createdBy: str = ""
+    # Only an admin can flip this (see routes/accounts.py) — everyone else
+    # who can see the ledger sees it read-only.
+    approved: bool = False
+
+
+class ApprovalUpdate(BaseModel):
+    approved: bool
+
+
+# Currency exchange ledger entry — visible on the Currency menu (admin +
+# users whose assigned custom role is "Currency"). Same approval pattern
+# as AccountEntry above (admin-only toggle, everyone else read-only).
+class CurrencyEntryCreate(BaseModel):
+    slNo: str = ""
+    travelDate: str = ""
+    passportNumber: str = ""
+    clientName: str = ""
+    phoneNumber: str = ""
+    currency: str = ""  # e.g. "USD" — see CURRENCY_OPTIONS in routes/currency_entries.py
+    amount: str = ""  # INR amount for that currency
+    clientAmount: str = ""  # amount the client handed over, in the foreign currency above
+    currencyConversion: str = ""  # exchange rate applied (clientAmount x this ~= amount)
+    handOverTo: str = ""
+
+
+class CurrencyEntryOut(CurrencyEntryCreate):
+    id: str
+    createdAt: str
+    createdBy: str = ""
+    approved: bool = False

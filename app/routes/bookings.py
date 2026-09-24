@@ -2,11 +2,74 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
 from pymongo import ReturnDocument
-from ..db import bookings_collection, packages_collection, users_collection
+from ..db import accounts_collection, bookings_collection, packages_collection, users_collection
 from ..deps import CurrentUser, get_current_user
 from ..schemas import BookingCreate, BookingOut
+from .accounts import compute_next_sl_no
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
+
+
+def _to_float(v) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _compute_balance_due(doc: dict) -> str:
+    # Mirrors lib/invoice.ts's computeInvoiceTotals exactly — the "Balance
+    # Due" column on the bookings table is packagePrice (adults/children/
+    # infants x their prices) minus total advance paid, NOT the booking's
+    # own "amount" field (that's "Amount to collect now", the one-off figure
+    # typed in just to generate a UPI QR code — unrelated to the running
+    # balance, which is why the ledger showed the wrong number).
+    package_price = (
+        _to_float(doc.get("adults")) * _to_float(doc.get("adultPrice"))
+        + _to_float(doc.get("children")) * _to_float(doc.get("childPrice"))
+        + _to_float(doc.get("infants")) * _to_float(doc.get("infantPrice"))
+    )
+    total_advance = sum(_to_float(p.get("amount")) for p in (doc.get("advancePayments") or []))
+    balance_due = package_price - total_advance
+    return str(int(balance_due)) if balance_due == int(balance_due) else str(balance_due)
+
+
+async def _sync_account_entry(booking_id: str, doc: dict, created_by: str, is_new: bool) -> None:
+    # Keeps the Account ledger's Invoice No / Balance / Client Name / Date in
+    # lockstep with whatever the booking form shows, per the admin's request
+    # that booking data "automatically comes to account list" — same numbers
+    # in both places instead of someone re-typing them into a ledger entry.
+    # Linked via a plain "bookingId" field on the accounts doc, deliberately
+    # left off AccountEntryCreate/Out so it's never exposed to the frontend
+    # and a normal manual edit of the row (which round-trips the full
+    # AccountEntryCreate model) can't accidentally wipe the link.
+    fields = {
+        "date": doc.get("invoiceDate") or doc.get("travelDate") or "",
+        "invoiceNo": doc.get("invoiceNumber", ""),
+        "agent": doc.get("userName", ""),
+        "clientName": doc.get("clientName", ""),
+        "destination": doc.get("location", ""),
+        "balance": _compute_balance_due(doc),
+    }
+    if is_new:
+        fields.update(
+            {
+                "slNo": await compute_next_sl_no(),
+                "handOverTo": "",
+                "debitCredit": "Credit",
+                "paymentMode": "Cash",
+                "createdAt": datetime.now(timezone.utc).isoformat(),
+                "createdBy": created_by,
+                "approved": False,
+                "bookingId": booking_id,
+            }
+        )
+        await accounts_collection.insert_one(fields)
+    else:
+        # Only touches the booking-derived fields — Hand Over To, Debit/
+        # Credit, Payment Mode and Approval are ledger-specific and stay
+        # whatever an admin/Account-role user already set on this row.
+        await accounts_collection.update_one({"bookingId": booking_id}, {"$set": fields})
 
 
 def _as_doc_list(v) -> list:
@@ -127,6 +190,32 @@ async def next_invoice_number(user: CurrentUser = Depends(get_current_user)):
     return {"invoiceNumber": str(next_num).zfill(4)}
 
 
+@router.get("/clients")
+async def list_clients(user: CurrentUser = Depends(get_current_user)):
+    # Name + phone only, across EVERY booking company-wide — unlike
+    # list_bookings() above, deliberately NOT filtered to what this account
+    # created/is assigned to. The Account and Currency ledgers' "pick an
+    # existing client" dropdowns need to find any client at all, not just
+    # ones this particular login can manage, and staff who only do
+    # account/currency entry work typically have none of their own
+    # bookings. Excludes every other field (pricing, documents, etc.) since
+    # this is reachable by any authenticated user, not just admin.
+    items = (
+        await bookings_collection.find({}, {"clientName": 1, "clientPhone": 1})
+        .sort("_id", -1)
+        .to_list(2000)
+    )
+    seen: set[str] = set()
+    result = []
+    for b in items:
+        name = (b.get("clientName") or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        result.append({"clientName": name, "clientPhone": b.get("clientPhone", "")})
+    return result
+
+
 @router.get("/{booking_id}", response_model=BookingOut)
 async def get_booking(booking_id: str, user: CurrentUser = Depends(get_current_user)):
     b = await bookings_collection.find_one({"_id": ObjectId(booking_id)})
@@ -152,6 +241,7 @@ async def create_booking(body: BookingCreate, user: CurrentUser = Depends(get_cu
     doc["createdAt"] = datetime.now(timezone.utc).isoformat()
     res = await bookings_collection.insert_one(doc)
     doc["_id"] = res.inserted_id
+    await _sync_account_entry(str(res.inserted_id), doc, user.id, is_new=True)
     return serialize(doc)
 
 
@@ -181,6 +271,7 @@ async def update_booking(
         {"$set": update},
         return_document=ReturnDocument.AFTER,
     )
+    await _sync_account_entry(booking_id, update, user.id, is_new=False)
     return serialize(res)
 
 
