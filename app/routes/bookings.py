@@ -255,6 +255,7 @@ async def list_travel_entries(user: CurrentUser = Depends(get_current_user)):
                 "clientName": 1,
                 "adults": 1,
                 "children": 1,
+                "infants": 1,
             },
         )
         .sort("_id", -1)
@@ -269,6 +270,7 @@ async def list_travel_entries(user: CurrentUser = Depends(get_current_user)):
             "clientName": b.get("clientName", ""),
             "adults": b.get("adults", "0"),
             "children": b.get("children", "0"),
+            "infants": b.get("infants", "0"),
         }
         for b in items
     ]
