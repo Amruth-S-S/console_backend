@@ -1,13 +1,41 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
+from bson.errors import InvalidId
 from pymongo import ReturnDocument
-from ..db import accounts_collection, bookings_collection, packages_collection, users_collection
+from ..db import (
+    accounts_collection,
+    bookings_collection,
+    packages_collection,
+    roles_collection,
+    users_collection,
+)
 from ..deps import CurrentUser, get_current_user
 from ..schemas import BookingCreate, BookingOut
 from .accounts import compute_next_sl_no
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
+
+# Case-insensitive match against the custom role name on the Roles page —
+# same pattern as ACCOUNT_ROLE_NAME/CURRENCY_ROLE_NAME. A Team Lead gets
+# admin-like READ access to every booking (for oversight/reporting) but
+# keeps a narrower edit/delete right than a regular staff account: only
+# bookings they personally created, not ones merely assigned to them (see
+# _is_team_lead's use in update_booking/delete_booking below).
+TEAM_LEAD_ROLE_NAME = "team lead"
+
+
+async def _is_team_lead(user: CurrentUser) -> bool:
+    if user.role == "admin":
+        return False
+    try:
+        user_doc = await users_collection.find_one({"_id": ObjectId(user.id)})
+        role_id = user_doc.get("roleId") if user_doc else None
+        role_doc = await roles_collection.find_one({"_id": ObjectId(role_id)}) if role_id else None
+    except InvalidId:
+        role_doc = None
+    role_name = (role_doc.get("name", "") if role_doc else "").strip().lower()
+    return role_name == TEAM_LEAD_ROLE_NAME
 
 
 def _to_float(v) -> float:
@@ -147,9 +175,12 @@ async def list_bookings(user: CurrentUser = Depends(get_current_user)):
     # Visible if this user made the booking OR it's assigned to them (userId)
     # — so a booking admin creates and assigns to a user shows up for that
     # user too. Editing/deleting stays restricted to the creator/admin below.
+    # A Team Lead sees every booking, same as admin — see TEAM_LEAD_ROLE_NAME
+    # above for why their edit rights don't get the same broadening.
+    see_all = user.role == "admin" or await _is_team_lead(user)
     query = (
         {}
-        if user.role == "admin"
+        if see_all
         else {"$or": [{"createdBy": user.id}, {"userId": user.id}]}
     )
     # ID document uploads are base64 and can each be a couple MB — same
@@ -220,7 +251,10 @@ async def list_clients(user: CurrentUser = Depends(get_current_user)):
 async def get_booking(booking_id: str, user: CurrentUser = Depends(get_current_user)):
     b = await bookings_collection.find_one({"_id": ObjectId(booking_id)})
     is_visible = (
-        user.role == "admin" or b.get("createdBy") == user.id or b.get("userId") == user.id
+        user.role == "admin"
+        or b.get("createdBy") == user.id
+        or b.get("userId") == user.id
+        or await _is_team_lead(user)
     ) if b else False
     if not b or not is_visible:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
@@ -250,16 +284,26 @@ async def update_booking(
     booking_id: str, body: BookingCreate, user: CurrentUser = Depends(get_current_user)
 ):
     existing = await bookings_collection.find_one({"_id": ObjectId(booking_id)})
-    # Same ownership rule as list_bookings/get_booking above — createdBy OR
-    # userId, not createdBy alone. A booking admin creates and assigns to a
-    # staff member (the normal flow: pick a user from the dropdown) has
-    # createdBy = admin's id, userId = that staff member's id. Checking only
-    # createdBy meant that staff member could see and open the booking (the
-    # two GET routes already use this same OR) but got "not found" the
-    # moment they tried to save an edit.
-    is_owner = existing and (existing.get("createdBy") == user.id or existing.get("userId") == user.id)
-    if not existing or (user.role != "admin" and not is_owner):
+    if not existing:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
+
+    if user.role != "admin":
+        if await _is_team_lead(user):
+            # Narrower than the regular rule below — a Team Lead can SEE
+            # every booking but may only edit ones they personally created,
+            # not ones just assigned to them, and not another team member's.
+            is_owner = existing.get("createdBy") == user.id
+        else:
+            # createdBy OR userId, not createdBy alone. A booking admin
+            # creates and assigns to a staff member (the normal flow: pick a
+            # user from the dropdown) has createdBy = admin's id, userId =
+            # that staff member's id. Checking only createdBy meant that
+            # staff member could see and open the booking (the two GET
+            # routes already use this same OR) but got "not found" the
+            # moment they tried to save an edit.
+            is_owner = existing.get("createdBy") == user.id or existing.get("userId") == user.id
+        if not is_owner:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
 
     target_user_id = body.userId if user.role == "admin" else user.id
     update = body.model_dump()
@@ -279,10 +323,14 @@ async def update_booking(
 async def delete_booking(booking_id: str, user: CurrentUser = Depends(get_current_user)):
     query = {"_id": ObjectId(booking_id)}
     if user.role != "admin":
-        # Same createdBy-OR-userId ownership rule as update_booking above —
-        # was createdBy-only here too, same "assigned to me but I can't
-        # touch it" bug.
-        query["$or"] = [{"createdBy": user.id}, {"userId": user.id}]
+        if await _is_team_lead(user):
+            # Same narrower rule as update_booking — createdBy only.
+            query["createdBy"] = user.id
+        else:
+            # Same createdBy-OR-userId ownership rule as update_booking
+            # above — was createdBy-only here too, same "assigned to me but
+            # I can't touch it" bug.
+            query["$or"] = [{"createdBy": user.id}, {"userId": user.id}]
     res = await bookings_collection.delete_one(query)
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
