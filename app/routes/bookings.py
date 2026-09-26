@@ -235,6 +235,45 @@ async def list_clients(user: CurrentUser = Depends(get_current_user)):
     return result
 
 
+@router.get("/travel-list")
+async def list_travel_entries(user: CurrentUser = Depends(get_current_user)):
+    # The Travel List page is deliberately common to every logged-in
+    # account, not just admin/Team Lead — same reasoning as /clients above:
+    # unlike list_bookings() (scoped to what this account created/is
+    # assigned to for a regular non-admin, non-Team-Lead user), a plain
+    # "User" role checking the departure roster still needs to see every
+    # trip company-wide, not just their own bookings. Only the handful of
+    # fields that page actually renders are returned — no pricing,
+    # contact details beyond the client's name, or documents.
+    items = (
+        await bookings_collection.find(
+            {},
+            {
+                "travelDate": 1,
+                "packageTitle": 1,
+                "location": 1,
+                "clientName": 1,
+                "adults": 1,
+                "children": 1,
+            },
+        )
+        .sort("_id", -1)
+        .to_list(3000)
+    )
+    return [
+        {
+            "id": str(b["_id"]),
+            "travelDate": b.get("travelDate", ""),
+            "packageTitle": b.get("packageTitle", ""),
+            "location": b.get("location", ""),
+            "clientName": b.get("clientName", ""),
+            "adults": b.get("adults", "0"),
+            "children": b.get("children", "0"),
+        }
+        for b in items
+    ]
+
+
 @router.get("/{booking_id}", response_model=BookingOut)
 async def get_booking(booking_id: str, user: CurrentUser = Depends(get_current_user)):
     b = await bookings_collection.find_one({"_id": ObjectId(booking_id)})
