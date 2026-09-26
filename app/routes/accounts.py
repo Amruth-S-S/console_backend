@@ -1,10 +1,9 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
-from bson.errors import InvalidId
 from pymongo import ReturnDocument
-from ..db import accounts_collection, roles_collection, users_collection
-from ..deps import CurrentUser, get_current_user
+from ..db import access_collection, accounts_collection
+from ..deps import CurrentUser, get_current_user, user_role_names
 from ..schemas import AccountEntryCreate, AccountEntryOut, ApprovalUpdate
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -14,17 +13,18 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 ACCOUNT_ROLE_NAME = "account"
 
 
-async def require_admin_or_account_role(user: CurrentUser) -> None:
+async def require_account_permission(user: CurrentUser, action: str) -> None:
+    # action is one of "view"/"create"/"edit"/"delete" — the same four
+    # switches admin sets on the Access page (routes/access.py). Holding
+    # the Account role is still required first; the granular grant (which
+    # defaults to fully-allowed if the admin never restricted it — see
+    # access.py's get_access) then narrows it further.
     if user.role == "admin":
         return
-    try:
-        user_doc = await users_collection.find_one({"_id": ObjectId(user.id)})
-        role_id = user_doc.get("roleId") if user_doc else None
-        role_doc = await roles_collection.find_one({"_id": ObjectId(role_id)}) if role_id else None
-    except InvalidId:
-        role_doc = None
-    role_name = (role_doc.get("name", "") if role_doc else "").strip().lower()
-    if role_name != ACCOUNT_ROLE_NAME:
+    if ACCOUNT_ROLE_NAME not in await user_role_names(user.id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
+    grant = await access_collection.find_one({"userId": user.id, "roleName": ACCOUNT_ROLE_NAME})
+    if grant is not None and not grant.get(action, True):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
 
 
@@ -55,7 +55,7 @@ def serialize(a: dict) -> AccountEntryOut:
 
 @router.get("", response_model=list[AccountEntryOut])
 async def list_accounts(user: CurrentUser = Depends(get_current_user)):
-    await require_admin_or_account_role(user)
+    await require_account_permission(user, "view")
     items = await accounts_collection.find().sort("_id", -1).to_list(1000)
     return [serialize(a) for a in items]
 
@@ -80,7 +80,7 @@ async def next_sl_no(user: CurrentUser = Depends(get_current_user)):
     # Same reasoning as bookings' next-invoice-number — computed against the
     # whole collection so every account/admin login continues one running
     # sequence instead of colliding.
-    await require_admin_or_account_role(user)
+    await require_account_permission(user, "create")
     return {"slNo": await compute_next_sl_no()}
 
 
@@ -88,7 +88,7 @@ async def next_sl_no(user: CurrentUser = Depends(get_current_user)):
 async def create_account(
     body: AccountEntryCreate, user: CurrentUser = Depends(get_current_user)
 ):
-    await require_admin_or_account_role(user)
+    await require_account_permission(user, "create")
     doc = body.model_dump()
     doc["createdAt"] = datetime.now(timezone.utc).isoformat()
     doc["createdBy"] = user.id
@@ -122,7 +122,7 @@ async def update_account(
     # Same gate as create — anyone who can add a ledger entry can also fix
     # one they (or a teammate) mistyped. approved/createdBy/createdAt are
     # untouched so editing fields doesn't reset an already-approved entry.
-    await require_admin_or_account_role(user)
+    await require_account_permission(user, "edit")
     updated = await accounts_collection.find_one_and_update(
         {"_id": ObjectId(entry_id)},
         {"$set": body.model_dump()},
@@ -135,7 +135,7 @@ async def update_account(
 
 @router.delete("/{entry_id}", status_code=204)
 async def delete_account(entry_id: str, user: CurrentUser = Depends(get_current_user)):
-    await require_admin_or_account_role(user)
+    await require_account_permission(user, "delete")
     res = await accounts_collection.delete_one({"_id": ObjectId(entry_id)})
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found")

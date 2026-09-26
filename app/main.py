@@ -5,6 +5,7 @@ from .config import settings
 from .db import users_collection, ensure_indexes
 from .security import hash_password
 from .routes import (
+    access,
     accounts,
     auth,
     users,
@@ -52,6 +53,7 @@ app.include_router(bookings.router)
 app.include_router(roles.router)
 app.include_router(accounts.router)
 app.include_router(currency_entries.router)
+app.include_router(access.router)
 app.include_router(settings_routes.router)
 
 

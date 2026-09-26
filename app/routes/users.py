@@ -20,16 +20,29 @@ async def role_name_map() -> dict[str, str]:
     return {str(r["_id"]): r.get("name", "") for r in roles}
 
 
+def _effective_role_ids(u: dict) -> list[str]:
+    # Same fallback as deps.py's user_role_names — a user can hold several
+    # roles now (roleIds), but accounts saved before that change only have
+    # the original singular "roleId" field.
+    ids = u.get("roleIds")
+    if ids is not None:
+        return [i for i in ids if i]
+    single = u.get("roleId")
+    return [single] if single else []
+
+
 def serialize(u: dict, roles_by_id: dict[str, str] | None = None) -> UserOut:
-    role_id = u.get("roleId") or ""
+    role_ids = _effective_role_ids(u)
+    by_id = roles_by_id or {}
+    role_names = [by_id[rid] for rid in role_ids if by_id.get(rid)]
     return UserOut(
         id=str(u["_id"]),
         name=u["name"],
         email=u["email"],
         phone=u.get("phone"),
         role=u["role"],
-        roleId=role_id,
-        roleName=(roles_by_id or {}).get(role_id, ""),
+        roleIds=role_ids,
+        roleNames=role_names,
     )
 
 
@@ -55,7 +68,7 @@ async def create_user(body: UserCreate, user: CurrentUser = Depends(get_current_
         "phone": body.phone,
         "password": hash_password(body.password),
         "role": "user",
-        "roleId": body.roleId,
+        "roleIds": body.roleIds,
     }
     res = await users_collection.insert_one(doc)
     doc["_id"] = res.inserted_id
@@ -71,8 +84,8 @@ async def update_user(
     if not update:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No fields to update")
 
-    if "roleId" in update and update["roleId"] is None:
-        update["roleId"] = ""
+    if "roleIds" in update and update["roleIds"] is None:
+        update["roleIds"] = []
 
     if "password" in update:
         update["password"] = hash_password(update["password"])

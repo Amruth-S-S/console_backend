@@ -1,16 +1,9 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
-from bson.errors import InvalidId
 from pymongo import ReturnDocument
-from ..db import (
-    accounts_collection,
-    bookings_collection,
-    packages_collection,
-    roles_collection,
-    users_collection,
-)
-from ..deps import CurrentUser, get_current_user
+from ..db import accounts_collection, bookings_collection, packages_collection, users_collection
+from ..deps import CurrentUser, get_current_user, user_role_names
 from ..schemas import BookingCreate, BookingOut
 from .accounts import compute_next_sl_no
 
@@ -28,14 +21,9 @@ TEAM_LEAD_ROLE_NAME = "team lead"
 async def _is_team_lead(user: CurrentUser) -> bool:
     if user.role == "admin":
         return False
-    try:
-        user_doc = await users_collection.find_one({"_id": ObjectId(user.id)})
-        role_id = user_doc.get("roleId") if user_doc else None
-        role_doc = await roles_collection.find_one({"_id": ObjectId(role_id)}) if role_id else None
-    except InvalidId:
-        role_doc = None
-    role_name = (role_doc.get("name", "") if role_doc else "").strip().lower()
-    return role_name == TEAM_LEAD_ROLE_NAME
+    # A user can hold several roles at once now — this is true if ANY of
+    # them is "Team Lead", not just when it's their only role.
+    return TEAM_LEAD_ROLE_NAME in await user_role_names(user.id)
 
 
 def _to_float(v) -> float:

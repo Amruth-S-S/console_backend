@@ -11,10 +11,11 @@ class UserCreate(BaseModel):
     email: EmailStr
     phone: str | None = Field(default=None, max_length=20)
     password: str = Field(min_length=6, max_length=128)
-    # Admin-assigned custom role (from the Roles page) — a label, distinct
+    # Admin-assigned custom roles (from the Roles page) — labels, distinct
     # from the "role" access-control field below (still hardcoded
-    # admin/user for actual permissions). Empty means unassigned.
-    roleId: str = ""
+    # admin/user for actual permissions). One person can hold several at
+    # once (e.g. both "Account" and "Currency"); empty means unassigned.
+    roleIds: list[str] = Field(default_factory=list)
 
 
 class UserUpdate(BaseModel):
@@ -24,7 +25,7 @@ class UserUpdate(BaseModel):
     # Admin-only password reset — omit the field entirely to leave the
     # password unchanged (see exclude_unset in the update route).
     password: str | None = Field(default=None, min_length=6, max_length=128)
-    roleId: str | None = None
+    roleIds: list[str] | None = None
 
 
 class UserOut(BaseModel):
@@ -33,11 +34,11 @@ class UserOut(BaseModel):
     email: EmailStr
     phone: str | None = None
     role: str
-    roleId: str = ""
-    # Resolved server-side from roleId (see routes/users.py, routes/auth.py)
-    # so the frontend can gate UI on the role NAME (e.g. "Account") without
-    # a separate roles fetch just to resolve one id.
-    roleName: str = ""
+    roleIds: list[str] = Field(default_factory=list)
+    # Resolved server-side from roleIds (see routes/users.py, routes/auth.py)
+    # so the frontend can gate UI on role NAMEs (e.g. "Account") without a
+    # separate roles fetch just to resolve each id.
+    roleNames: list[str] = Field(default_factory=list)
 
 
 class TokenResponse(BaseModel):
@@ -257,3 +258,26 @@ class CurrencyEntryOut(CurrencyEntryCreate):
     createdAt: str
     createdBy: str = ""
     approved: bool = False
+
+
+# Per-user, per-role granular CRUD permissions — a step finer than just
+# "has the Account/Currency role or not". Admin dials these down on the
+# Access page (routes/access.py); a role with no explicit grant record yet
+# defaults to full access, matching the original all-or-nothing behavior so
+# existing role holders don't lose access the moment this feature shipped.
+class AccessGrant(BaseModel):
+    roleName: str
+    view: bool = True
+    create: bool = True
+    edit: bool = True
+    delete: bool = True
+
+
+class AccessUpdate(BaseModel):
+    grants: list[AccessGrant]
+
+
+class AccessOut(BaseModel):
+    userId: str
+    userName: str
+    grants: list[AccessGrant]

@@ -22,6 +22,12 @@ accounts_collection = db["accounts"]
 # from settings_collection's currency_rates document (one global Thai/
 # Malaysian rate pair) — this is a per-client exchange record.
 currency_entries_collection = db["currency_entries"]
+# Per-user, per-role granular CRUD permissions (view/create/edit/delete) —
+# keyed by (userId, roleName). A role assigned to a user but with no
+# document here yet defaults to full access (see routes/access.py), so this
+# collection only ever holds explicit *restrictions* an admin has dialed in
+# on the Access page.
+access_collection = db["access"]
 
 
 async def ensure_indexes():

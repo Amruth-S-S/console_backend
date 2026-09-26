@@ -1,10 +1,9 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
-from bson.errors import InvalidId
 from pymongo import ReturnDocument
-from ..db import currency_entries_collection, roles_collection, users_collection
-from ..deps import CurrentUser, get_current_user
+from ..db import access_collection, currency_entries_collection
+from ..deps import CurrentUser, get_current_user, user_role_names
 from ..schemas import ApprovalUpdate, CurrencyEntryCreate, CurrencyEntryOut
 
 router = APIRouter(prefix="/currency-entries", tags=["currency-entries"])
@@ -15,17 +14,15 @@ router = APIRouter(prefix="/currency-entries", tags=["currency-entries"])
 CURRENCY_ROLE_NAME = "currency"
 
 
-async def require_admin_or_currency_role(user: CurrentUser) -> None:
+async def require_currency_permission(user: CurrentUser, action: str) -> None:
+    # Same shape as routes/accounts.py's require_account_permission — see
+    # that docstring. action is "view"/"create"/"edit"/"delete".
     if user.role == "admin":
         return
-    try:
-        user_doc = await users_collection.find_one({"_id": ObjectId(user.id)})
-        role_id = user_doc.get("roleId") if user_doc else None
-        role_doc = await roles_collection.find_one({"_id": ObjectId(role_id)}) if role_id else None
-    except InvalidId:
-        role_doc = None
-    role_name = (role_doc.get("name", "") if role_doc else "").strip().lower()
-    if role_name != CURRENCY_ROLE_NAME:
+    if CURRENCY_ROLE_NAME not in await user_role_names(user.id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
+    grant = await access_collection.find_one({"userId": user.id, "roleName": CURRENCY_ROLE_NAME})
+    if grant is not None and not grant.get(action, True):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
 
 
@@ -55,14 +52,14 @@ def serialize(c: dict) -> CurrencyEntryOut:
 
 @router.get("", response_model=list[CurrencyEntryOut])
 async def list_currency_entries(user: CurrentUser = Depends(get_current_user)):
-    await require_admin_or_currency_role(user)
+    await require_currency_permission(user, "view")
     items = await currency_entries_collection.find().sort("_id", -1).to_list(1000)
     return [serialize(c) for c in items]
 
 
 @router.get("/next-sl-no")
 async def next_sl_no(user: CurrentUser = Depends(get_current_user)):
-    await require_admin_or_currency_role(user)
+    await require_currency_permission(user, "create")
     items = await currency_entries_collection.find({}, {"slNo": 1}).to_list(5000)
     nums: list[int] = []
     for c in items:
@@ -78,7 +75,7 @@ async def next_sl_no(user: CurrentUser = Depends(get_current_user)):
 async def create_currency_entry(
     body: CurrencyEntryCreate, user: CurrentUser = Depends(get_current_user)
 ):
-    await require_admin_or_currency_role(user)
+    await require_currency_permission(user, "create")
     doc = body.model_dump()
     doc["createdAt"] = datetime.now(timezone.utc).isoformat()
     doc["createdBy"] = user.id
@@ -110,7 +107,7 @@ async def update_currency_entry(
     entry_id: str, body: CurrencyEntryCreate, user: CurrentUser = Depends(get_current_user)
 ):
     # Same gate as create — same reasoning as accounts.py's update_account.
-    await require_admin_or_currency_role(user)
+    await require_currency_permission(user, "edit")
     updated = await currency_entries_collection.find_one_and_update(
         {"_id": ObjectId(entry_id)},
         {"$set": body.model_dump()},
@@ -123,7 +120,7 @@ async def update_currency_entry(
 
 @router.delete("/{entry_id}", status_code=204)
 async def delete_currency_entry(entry_id: str, user: CurrentUser = Depends(get_current_user)):
-    await require_admin_or_currency_role(user)
+    await require_currency_permission(user, "delete")
     res = await currency_entries_collection.delete_one({"_id": ObjectId(entry_id)})
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found")
