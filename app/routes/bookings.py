@@ -256,6 +256,7 @@ async def list_travel_entries(user: CurrentUser = Depends(get_current_user)):
                 "adults": 1,
                 "children": 1,
                 "infants": 1,
+                "userName": 1,
             },
         )
         .sort("_id", -1)
@@ -271,6 +272,10 @@ async def list_travel_entries(user: CurrentUser = Depends(get_current_user)):
             "adults": b.get("adults", "0"),
             "children": b.get("children", "0"),
             "infants": b.get("infants", "0"),
+            # Same field the Bookings table's "Booked By" column already
+            # shows (see bookings.tsx) — the staff member this booking is
+            # assigned to.
+            "userName": b.get("userName", ""),
         }
         for b in items
     ]
