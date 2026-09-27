@@ -256,13 +256,20 @@ class CurrencyEntryCreate(BaseModel):
     slNo: str = ""
     travelDate: str = ""
     passportNumber: str = ""
-    clientName: str = ""
+    clientName: str = ""  # optional — pick from the client directory
+    # Free-text name alongside the optional Client Name dropdown, same as
+    # AccountEntryCreate.name — for walk-ins who aren't a booked client.
+    name: str = ""
     phoneNumber: str = ""
     currency: str = ""  # e.g. "USD" — see CURRENCY_OPTIONS in routes/currency_entries.py
     amount: str = ""  # INR amount for that currency
     clientAmount: str = ""  # amount the client handed over, in the foreign currency above
     currencyConversion: str = ""  # exchange rate applied (clientAmount x this ~= amount)
+    bankConversion: str = ""  # rate the bank gave
+    companyCurrencyConversion: str = ""  # rate the company applies internally
+    paymentMode: str = ""  # same options as AccountEntryCreate.paymentMode
     handOverTo: str = ""
+    transferTo: str = ""
 
 
 class CurrencyEntryOut(CurrencyEntryCreate):

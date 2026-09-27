@@ -41,12 +41,17 @@ def serialize(c: dict) -> CurrencyEntryOut:
         travelDate=c.get("travelDate", ""),
         passportNumber=c.get("passportNumber", ""),
         clientName=c.get("clientName", ""),
+        name=c.get("name", ""),
         phoneNumber=c.get("phoneNumber", ""),
         currency=c.get("currency", ""),
         amount=c.get("amount", ""),
         clientAmount=c.get("clientAmount", ""),
         currencyConversion=c.get("currencyConversion", ""),
+        bankConversion=c.get("bankConversion", ""),
+        companyCurrencyConversion=c.get("companyCurrencyConversion", ""),
+        paymentMode=c.get("paymentMode", ""),
         handOverTo=c.get("handOverTo", ""),
+        transferTo=c.get("transferTo", ""),
     )
 
 
