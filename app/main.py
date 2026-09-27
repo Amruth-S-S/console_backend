@@ -12,6 +12,7 @@ from .routes import (
     packages,
     bookings,
     roles,
+    rooms,
     currency_entries,
     settings as settings_routes,
 )
@@ -54,6 +55,7 @@ app.include_router(roles.router)
 app.include_router(accounts.router)
 app.include_router(currency_entries.router)
 app.include_router(access.router)
+app.include_router(rooms.router)
 app.include_router(settings_routes.router)
 
 

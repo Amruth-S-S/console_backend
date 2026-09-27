@@ -207,18 +207,30 @@ class RoleOut(RoleCreate):
 
 
 # Accounts ledger entry — visible on the Account menu (admin + users whose
-# assigned custom role is "Account"). debitCredit/paymentMode are free
-# strings rather than enums so the frontend's exact dropdown wording can
-# change without a backend migration.
+# assigned custom role is "Account"). paymentMode is a free string rather
+# than an enum so the frontend's exact dropdown wording can change without
+# a backend migration.
 class AccountEntryCreate(BaseModel):
     slNo: str = ""
     date: str = ""
     invoiceNo: str = ""
     agent: str = ""
     clientName: str = ""
+    # Free-text name field alongside the Client Name dropdown — e.g. the
+    # actual traveler/contact's name when it differs from the booking's
+    # client name. Not auto-filled from a synced booking, manual only.
+    name: str = ""
     destination: str = ""
     handOverTo: str = ""
-    debitCredit: str = ""  # "Debit" | "Credit"
+    # Separate amount fields — an entry can carry a debit amount, a credit
+    # amount, or both. A booking-synced row's advance payment lands in
+    # credit (received = credit), debit stays blank.
+    debit: str = ""
+    credit: str = ""
+    # The booking's outstanding Balance Due (package price minus total
+    # advance received so far) — same figure the Bookings page shows,
+    # repeated on every synced row for that booking rather than computed
+    # per payment. Free text on a manual entry.
     balance: str = ""
     paymentMode: str = ""  # "Cash" | "UPI" | "Net Banking" | "Cheque"
     description: str = ""
@@ -281,3 +293,41 @@ class AccessOut(BaseModel):
     userId: str
     userName: str
     grants: list[AccessGrant]
+
+
+# Room list ("rooming list") — the passenger-manifest-style document travel
+# agencies prepare per booking: every adult/child/infant traveling under
+# that booking gets their own passport-matching identity + flight fields,
+# not just a headcount.
+class RoomTraveler(BaseModel):
+    category: str  # "adult" | "child" | "infant"
+    givenName: str = ""
+    surname: str = ""
+    gender: str = ""  # "Male" | "Female" | "Other"
+    passportNo: str = ""
+    dob: str = ""
+    arrivalAirport: str = ""
+    departureAirport: str = ""
+
+
+class RoomEntryCreate(BaseModel):
+    slNo: str = ""
+    packageType: str = "domestic"  # "domestic" | "international"
+    packageId: str = ""
+    # Snapshotted at save time, same reasoning as bookings' packageTitle —
+    # survives the source package being renamed/deleted later.
+    packageTitle: str = ""
+    clientName: str = ""
+    # Auto-filled from the selected client's booking (see
+    # routes/bookings.py's /by-package), editable afterward.
+    invoiceNumber: str = ""
+    roomType: str = ""  # e.g. "Double" — see ROOM_TYPE_OPTIONS in the frontend
+    numberOfRooms: str = ""
+    sharingPerRoom: str = ""
+    travelers: list[RoomTraveler] = Field(default_factory=list)
+
+
+class RoomEntryOut(RoomEntryCreate):
+    id: str
+    createdAt: str
+    createdBy: str = ""

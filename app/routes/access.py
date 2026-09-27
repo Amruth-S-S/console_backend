@@ -8,21 +8,18 @@ from .users import _effective_role_ids, require_admin, role_name_map
 
 router = APIRouter(prefix="/access", tags=["access"])
 
-# Only roles that actually gate a real CRUD feature get a section on the
-# Access page — a role like "Team Lead" has its own separate, differently
-# shaped booking-visibility rule (see routes/bookings.py's _is_team_lead)
-# rather than a view/create/edit/delete grant, so it's deliberately left
-# out here.
-GOVERNED_ROLES = {"account", "currency"}
-
-
 async def _build_access_out(user_id: str, user_doc: dict) -> AccessOut:
+    # Every role actually assigned to this person gets a section — not just
+    # the ones a route currently enforces. A role like "Team Lead" has its
+    # own separate, differently shaped booking-visibility rule (see
+    # routes/bookings.py's _is_team_lead) rather than a view/create/edit/
+    # delete grant, so its checkboxes are shown but currently unused;
+    # "Account"/"Currency"/"Room List" are each enforced by their own route.
     roles_by_id = await role_name_map()
     role_names = [roles_by_id[rid] for rid in _effective_role_ids(user_doc) if roles_by_id.get(rid)]
-    governed_names = [rn for rn in role_names if rn.strip().lower() in GOVERNED_ROLES]
 
     grants = []
-    for role_name in governed_names:
+    for role_name in role_names:
         key = role_name.strip().lower()
         existing = await access_collection.find_one({"userId": user_id, "roleName": key})
         # No record yet means this role has never been restricted — full
@@ -69,7 +66,7 @@ async def set_access(user_id: str, body: AccessUpdate, user: CurrentUser = Depen
 
     for grant in body.grants:
         key = grant.roleName.strip().lower()
-        if key not in GOVERNED_ROLES:
+        if not key:
             continue
         await access_collection.update_one(
             {"userId": user_id, "roleName": key},

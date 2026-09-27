@@ -28,6 +28,10 @@ currency_entries_collection = db["currency_entries"]
 # collection only ever holds explicit *restrictions* an admin has dialed in
 # on the Access page.
 access_collection = db["access"]
+# Room list ("rooming list") entries — passenger-manifest documents per
+# booking. Common to every logged-in account, same as the Travel List page
+# (not scoped to who created it — see routes/rooms.py).
+rooms_collection = db["rooms"]
 
 
 async def ensure_indexes():

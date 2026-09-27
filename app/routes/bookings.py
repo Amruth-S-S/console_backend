@@ -34,12 +34,13 @@ def _to_float(v) -> float:
 
 
 def _compute_balance_due(doc: dict) -> str:
-    # Mirrors lib/invoice.ts's computeInvoiceTotals exactly — the "Balance
-    # Due" column on the bookings table is packagePrice (adults/children/
-    # infants x their prices) minus total advance paid, NOT the booking's
-    # own "amount" field (that's "Amount to collect now", the one-off figure
-    # typed in just to generate a UPI QR code — unrelated to the running
-    # balance, which is why the ledger showed the wrong number).
+    # Mirrors lib/invoice.ts's computeInvoiceTotals — the same "Balance
+    # Due" figure the Bookings page shows: packagePrice (adults/children/
+    # infants x their prices) minus total advance paid across ALL of the
+    # booking's payments, not just the ones up to a given row. Every synced
+    # ledger row for this booking gets this same value (see the confirmed
+    # design: Balance is the booking's outstanding due, not a per-payment
+    # running total).
     package_price = (
         _to_float(doc.get("adults")) * _to_float(doc.get("adultPrice"))
         + _to_float(doc.get("children")) * _to_float(doc.get("childPrice"))
@@ -50,42 +51,65 @@ def _compute_balance_due(doc: dict) -> str:
     return str(int(balance_due)) if balance_due == int(balance_due) else str(balance_due)
 
 
-async def _sync_account_entry(booking_id: str, doc: dict, created_by: str, is_new: bool) -> None:
-    # Keeps the Account ledger's Invoice No / Balance / Client Name / Date in
-    # lockstep with whatever the booking form shows, per the admin's request
-    # that booking data "automatically comes to account list" — same numbers
-    # in both places instead of someone re-typing them into a ledger entry.
-    # Linked via a plain "bookingId" field on the accounts doc, deliberately
-    # left off AccountEntryCreate/Out so it's never exposed to the frontend
-    # and a normal manual edit of the row (which round-trips the full
-    # AccountEntryCreate model) can't accidentally wipe the link.
-    fields = {
-        "date": doc.get("invoiceDate") or doc.get("travelDate") or "",
+async def _sync_account_entries(booking_id: str, doc: dict, created_by: str) -> None:
+    # Keeps the Account ledger in lockstep with the booking's OWN advance
+    # payment history — one ledger row per advance payment (not one row per
+    # booking), each showing that specific payment's date/amount (received
+    # = Credit)/payment mode, per the admin's request that a booking with
+    # e.g. 4 advance payments show up as 4 ledger rows, each with the real
+    # payment mode used. Debit is left blank on synced rows — that's
+    # reserved for manual expense/adjustment entries. Rows are matched to a
+    # specific advance payment by its position in the array ("paymentIndex")
+    # since AdvancePayment has no id of its own — reordering payments is
+    # rare enough that this is an acceptable tradeoff. Linked via plain
+    # "bookingId"/"paymentIndex" fields, deliberately left off
+    # AccountEntryCreate/Out so they're never exposed to the frontend and a
+    # normal manual edit of a row (which round-trips the full
+    # AccountEntryCreate model) can't wipe the link.
+    base_fields = {
         "invoiceNo": doc.get("invoiceNumber", ""),
         "agent": doc.get("userName", ""),
         "clientName": doc.get("clientName", ""),
         "destination": doc.get("location", ""),
-        "balance": _compute_balance_due(doc),
     }
-    if is_new:
-        fields.update(
-            {
-                "slNo": await compute_next_sl_no(),
-                "handOverTo": "",
-                "debitCredit": "Credit",
-                "paymentMode": "Cash",
-                "createdAt": datetime.now(timezone.utc).isoformat(),
-                "createdBy": created_by,
-                "approved": False,
-                "bookingId": booking_id,
-            }
-        )
-        await accounts_collection.insert_one(fields)
-    else:
-        # Only touches the booking-derived fields — Hand Over To, Debit/
-        # Credit, Payment Mode and Approval are ledger-specific and stay
-        # whatever an admin/Account-role user already set on this row.
-        await accounts_collection.update_one({"bookingId": booking_id}, {"$set": fields})
+    payments = doc.get("advancePayments") or []
+    next_sl_no = int(await compute_next_sl_no())
+    balance_due = _compute_balance_due(doc)
+
+    for i, payment in enumerate(payments):
+        fields = {
+            **base_fields,
+            "date": payment.get("date") or doc.get("invoiceDate") or "",
+            "credit": payment.get("amount", ""),
+            "balance": balance_due,
+            "paymentMode": payment.get("note", ""),
+        }
+        existing = await accounts_collection.find_one({"bookingId": booking_id, "paymentIndex": i})
+        if existing:
+            # Only touches the booking-derived fields — Hand Over To,
+            # Debit, Description and Approval are ledger-specific and stay
+            # whatever an admin/Account-role user already set on this row.
+            await accounts_collection.update_one({"_id": existing["_id"]}, {"$set": fields})
+        else:
+            await accounts_collection.insert_one(
+                {
+                    **fields,
+                    "slNo": str(next_sl_no),
+                    "debit": "",
+                    "handOverTo": "",
+                    "description": "",
+                    "createdAt": datetime.now(timezone.utc).isoformat(),
+                    "createdBy": created_by,
+                    "approved": False,
+                    "bookingId": booking_id,
+                    "paymentIndex": i,
+                }
+            )
+            next_sl_no += 1
+
+    # A payment removed from the booking (array shrank) drops its row too —
+    # everything from the new length onward no longer has a source payment.
+    await accounts_collection.delete_many({"bookingId": booking_id, "paymentIndex": {"$gte": len(payments)}})
 
 
 def _as_doc_list(v) -> list:
@@ -235,6 +259,38 @@ async def list_clients(user: CurrentUser = Depends(get_current_user)):
     return result
 
 
+@router.get("/by-package/{package_id}")
+async def list_by_package(package_id: str, user: CurrentUser = Depends(get_current_user)):
+    # Powers the Room List page's Client dropdown — once a Package is
+    # picked there, show only clients actually booked under that exact
+    # package, with their adult/children/infant counts so the room-list
+    # form knows how many traveler detail blocks to generate, and their
+    # invoice number so it can auto-fill once a client is selected.
+    # Unfiltered by ownership, same reasoning as /clients above. bookingId
+    # (not just clientName) is returned so two different bookings under the
+    # same package for a same-named client stay distinguishable in the
+    # dropdown.
+    items = (
+        await bookings_collection.find(
+            {"packageId": package_id},
+            {"clientName": 1, "adults": 1, "children": 1, "infants": 1, "invoiceNumber": 1},
+        )
+        .sort("_id", -1)
+        .to_list(1000)
+    )
+    return [
+        {
+            "bookingId": str(b["_id"]),
+            "clientName": b.get("clientName", ""),
+            "adults": b.get("adults", "0"),
+            "children": b.get("children", "0"),
+            "infants": b.get("infants", "0"),
+            "invoiceNumber": b.get("invoiceNumber", ""),
+        }
+        for b in items
+    ]
+
+
 @router.get("/travel-list")
 async def list_travel_entries(user: CurrentUser = Depends(get_current_user)):
     # The Travel List page is deliberately common to every logged-in
@@ -309,7 +365,7 @@ async def create_booking(body: BookingCreate, user: CurrentUser = Depends(get_cu
     doc["createdAt"] = datetime.now(timezone.utc).isoformat()
     res = await bookings_collection.insert_one(doc)
     doc["_id"] = res.inserted_id
-    await _sync_account_entry(str(res.inserted_id), doc, user.id, is_new=True)
+    await _sync_account_entries(str(res.inserted_id), doc, user.id)
     return serialize(doc)
 
 
@@ -349,7 +405,7 @@ async def update_booking(
         {"$set": update},
         return_document=ReturnDocument.AFTER,
     )
-    await _sync_account_entry(booking_id, update, user.id, is_new=False)
+    await _sync_account_entries(booking_id, update, user.id)
     return serialize(res)
 
 
