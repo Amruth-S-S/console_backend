@@ -37,6 +37,7 @@ def serialize(c: dict) -> CurrencyEntryOut:
         createdAt=c.get("createdAt", ""),
         createdBy=c.get("createdBy", ""),
         approved=bool(c.get("approved", False)),
+        approvedIn=bool(c.get("approvedIn", False)),
         slNo=c.get("slNo", ""),
         travelDate=c.get("travelDate", ""),
         passportNumber=c.get("passportNumber", ""),
@@ -85,6 +86,7 @@ async def create_currency_entry(
     doc["createdAt"] = datetime.now(timezone.utc).isoformat()
     doc["createdBy"] = user.id
     doc["approved"] = False
+    doc["approvedIn"] = False
     res = await currency_entries_collection.insert_one(doc)
     doc["_id"] = res.inserted_id
     return serialize(doc)
@@ -100,6 +102,23 @@ async def set_approval(
     updated = await currency_entries_collection.find_one_and_update(
         {"_id": ObjectId(entry_id)},
         {"$set": {"approved": body.approved}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found")
+    return serialize(updated)
+
+
+@router.put("/{entry_id}/approval-in", response_model=CurrencyEntryOut)
+async def set_approval_in(
+    entry_id: str, body: ApprovalUpdate, user: CurrentUser = Depends(get_current_user)
+):
+    # "Currency In" — second approval alongside "Currency Out" (the
+    # original `approved` field above), same admin-only rule.
+    require_admin(user)
+    updated = await currency_entries_collection.find_one_and_update(
+        {"_id": ObjectId(entry_id)},
+        {"$set": {"approvedIn": body.approved}},
         return_document=ReturnDocument.AFTER,
     )
     if not updated:

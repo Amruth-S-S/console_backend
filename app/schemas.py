@@ -236,6 +236,30 @@ class AccountEntryCreate(BaseModel):
     description: str = ""
 
 
+# A file (PDF / Word doc / image) attached to a ledger entry — receipts,
+# transfer screenshots, etc. Stored on the entry document as a base64 data
+# URL, same approach as BookingDocument; the list endpoint projects `data`
+# out so only this metadata travels with the table.
+class AccountAttachmentUpload(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    type: str = ""
+    data: str = Field(min_length=1)
+
+
+class AccountAttachmentMeta(BaseModel):
+    id: str
+    name: str
+    type: str = ""
+    size: int = 0  # decoded bytes
+    uploadedAt: str = ""
+    uploadedBy: str = ""
+    uploadedByName: str = ""
+
+
+class AccountAttachmentOut(AccountAttachmentMeta):
+    data: str
+
+
 class AccountEntryOut(AccountEntryCreate):
     id: str
     createdAt: str
@@ -243,6 +267,7 @@ class AccountEntryOut(AccountEntryCreate):
     # Only an admin can flip this (see routes/accounts.py) — everyone else
     # who can see the ledger sees it read-only.
     approved: bool = False
+    attachments: list[AccountAttachmentMeta] = Field(default_factory=list)
 
 
 class ApprovalUpdate(BaseModel):
@@ -276,7 +301,8 @@ class CurrencyEntryOut(CurrencyEntryCreate):
     id: str
     createdAt: str
     createdBy: str = ""
-    approved: bool = False
+    approved: bool = False  # "Currency Out" approval (the original one)
+    approvedIn: bool = False  # "Currency In" approval — same admin-only rule
 
 
 # Per-user, per-role granular CRUD permissions — a step finer than just
