@@ -165,6 +165,9 @@ class BookingCreate(BaseModel):
     # Free-text notes from the client (dietary needs, room preference, etc.)
     # — shown on page 2 of the invoice alongside the hardcoded terms & conditions.
     specialRequirements: str = ""
+    # Internal note for the team — shown on the Bookings list, deliberately
+    # NOT printed on the invoice (unlike specialRequirements above).
+    note: str = ""
     # ID document uploads — Aadhar/PAN/Passport each accept one or many
     # files (e.g. front + back of a card), plus an open-ended "other
     # documents" list for anything else.

@@ -155,6 +155,7 @@ def serialize(b: dict) -> BookingOut:
         amount=b.get("amount", ""),
         transactionId=b.get("transactionId", ""),
         specialRequirements=b.get("specialRequirements", ""),
+        note=b.get("note", ""),
         aadharDoc=_as_doc_list(b.get("aadharDoc")),
         panDoc=_as_doc_list(b.get("panDoc")),
         passportDoc=_as_doc_list(b.get("passportDoc")),
