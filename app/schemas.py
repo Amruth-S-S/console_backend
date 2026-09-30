@@ -298,6 +298,22 @@ class CurrencyEntryCreate(BaseModel):
     paymentMode: str = ""  # same options as AccountEntryCreate.paymentMode
     handOverTo: str = ""
     transferTo: str = ""
+    # Passport details — filled by the in-browser passport reader
+    # (frontend lib/passportOcr.ts) or typed by hand. passportNumber above holds the passport number.
+    surname: str = ""
+    givenName: str = ""
+    sex: str = ""
+    dob: str = ""
+    nationality: str = ""
+    placeOfBirth: str = ""
+    placeOfIssue: str = ""
+    dateOfIssue: str = ""
+    dateOfExpiry: str = ""
+    fatherName: str = ""
+    motherName: str = ""
+    spouseName: str = ""
+    address: str = ""
+    fileNo: str = ""
 
 
 class CurrencyEntryOut(CurrencyEntryCreate):
@@ -306,6 +322,48 @@ class CurrencyEntryOut(CurrencyEntryCreate):
     createdBy: str = ""
     approved: bool = False  # "Currency Out" approval (the original one)
     approvedIn: bool = False  # "Currency In" approval — same admin-only rule
+
+
+# DMC Account ledger entry — payments made to / received from a DMC
+# (destination management company). Same approval pattern as the Account
+# and Currency ledgers: admin-only toggle, everyone else read-only.
+class DmcAccountCreate(BaseModel):
+    slNo: str = ""
+    name: str = ""
+    travelDate: str = ""
+    paymentDate: str = ""
+    paymentFrom: str = ""
+    paymentTo: str = ""
+    paymentMode: str = ""  # same options as AccountEntryCreate.paymentMode
+    destination: str = ""
+    numberOfTravelers: str = ""
+    perPersonQuotation: str = ""
+    # Pre-filled on the frontend as travelers x per-person quotation, but
+    # stored as typed so a negotiated total can override it.
+    totalAmount: str = ""
+    note: str = ""
+
+
+class DmcAccountOut(DmcAccountCreate):
+    id: str
+    createdAt: str
+    createdBy: str = ""
+    approved: bool = False
+
+
+# Upcoming package departure — admin-managed, read by everyone on the
+# Overview dashboard. month is "yyyy-mm" (from <input type="month">); dates
+# is the day(s) of that month it departs, free text like "11, 18, 25".
+class UpcomingPackageCreate(BaseModel):
+    month: str = Field(min_length=7, max_length=7)
+    dates: str = ""
+    packageName: str = Field(min_length=1, max_length=200)
+    landCost: str = ""
+
+
+class UpcomingPackageOut(UpcomingPackageCreate):
+    id: str
+    createdAt: str
 
 
 # Per-user, per-role granular CRUD permissions — a step finer than just
@@ -344,6 +402,18 @@ class RoomTraveler(BaseModel):
     dob: str = ""
     arrivalAirport: str = ""
     departureAirport: str = ""
+    # Remaining passport fields — filled by the in-browser passport reader
+    # (frontend lib/passportOcr.ts) or typed by hand.
+    nationality: str = ""
+    placeOfBirth: str = ""
+    placeOfIssue: str = ""
+    dateOfIssue: str = ""
+    dateOfExpiry: str = ""
+    fatherName: str = ""
+    motherName: str = ""
+    spouseName: str = ""
+    address: str = ""
+    fileNo: str = ""
 
 
 class RoomEntryCreate(BaseModel):

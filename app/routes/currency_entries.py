@@ -32,27 +32,14 @@ def require_admin(user: CurrentUser) -> None:
 
 
 def serialize(c: dict) -> CurrencyEntryOut:
+    fields = {k: c.get(k, "") for k in CurrencyEntryCreate.model_fields}
     return CurrencyEntryOut(
         id=str(c["_id"]),
         createdAt=c.get("createdAt", ""),
         createdBy=c.get("createdBy", ""),
         approved=bool(c.get("approved", False)),
         approvedIn=bool(c.get("approvedIn", False)),
-        slNo=c.get("slNo", ""),
-        travelDate=c.get("travelDate", ""),
-        passportNumber=c.get("passportNumber", ""),
-        clientName=c.get("clientName", ""),
-        name=c.get("name", ""),
-        phoneNumber=c.get("phoneNumber", ""),
-        currency=c.get("currency", ""),
-        amount=c.get("amount", ""),
-        clientAmount=c.get("clientAmount", ""),
-        currencyConversion=c.get("currencyConversion", ""),
-        bankConversion=c.get("bankConversion", ""),
-        companyCurrencyConversion=c.get("companyCurrencyConversion", ""),
-        paymentMode=c.get("paymentMode", ""),
-        handOverTo=c.get("handOverTo", ""),
-        transferTo=c.get("transferTo", ""),
+        **fields,
     )
 
 

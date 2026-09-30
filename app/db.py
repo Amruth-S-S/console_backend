@@ -32,6 +32,12 @@ access_collection = db["access"]
 # booking. Common to every logged-in account, same as the Travel List page
 # (not scoped to who created it — see routes/rooms.py).
 rooms_collection = db["rooms"]
+# DMC (destination management company) payment ledger — same gating shape
+# as accounts/currency: admin plus users assigned the "DMC Account" role.
+dmc_accounts_collection = db["dmc_accounts"]
+# Admin-curated "upcoming departures" (month, dates, package, land cost),
+# shown to every logged-in user at the top of the Overview dashboard.
+upcoming_packages_collection = db["upcoming_packages"]
 
 
 async def ensure_indexes():
