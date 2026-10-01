@@ -366,6 +366,44 @@ class UpcomingPackageOut(UpcomingPackageCreate):
     createdAt: str
 
 
+# Offer Section row (admin-only): a package and its target amount. The
+# modal saves several rows at once via OfferBulkCreate.
+class OfferCreate(BaseModel):
+    packageName: str = Field(min_length=1, max_length=200)
+    targetAmount: str = ""
+    # Offer period (yyyy-mm-dd, both inclusive). Only bookings made in this
+    # window count toward the target on the admin Overview. Blank = open-ended.
+    fromDate: str = ""
+    toDate: str = ""
+
+    @model_validator(mode="after")
+    def _dates_in_order(self):
+        if self.fromDate and self.toDate and self.fromDate > self.toDate:
+            raise ValueError("From date must be on or before To date")
+        return self
+
+
+class OfferBulkCreate(BaseModel):
+    offers: list[OfferCreate] = Field(min_length=1, max_length=100)
+
+
+class OfferOut(OfferCreate):
+    id: str
+    createdAt: str
+
+
+# A regular user's own progress on one offer — percentage only. The target
+# amount and booked value deliberately never leave the server.
+class MyOfferProgress(BaseModel):
+    id: str
+    packageName: str
+    fromDate: str = ""
+    toDate: str = ""
+    bookings: int = 0
+    percent: int = 0  # 0-100, of this user's individual target
+    met: bool = False
+
+
 # Per-user, per-role granular CRUD permissions — a step finer than just
 # "has the Account/Currency role or not". Admin dials these down on the
 # Access page (routes/access.py); a role with no explicit grant record yet

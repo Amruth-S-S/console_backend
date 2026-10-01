@@ -16,6 +16,7 @@ from .routes import (
     currency_entries,
     dmc_accounts,
     upcoming_packages,
+    offers,
     settings as settings_routes,
 )
 
@@ -58,6 +59,7 @@ app.include_router(accounts.router)
 app.include_router(currency_entries.router)
 app.include_router(dmc_accounts.router)
 app.include_router(upcoming_packages.router)
+app.include_router(offers.router)
 app.include_router(access.router)
 app.include_router(rooms.router)
 app.include_router(settings_routes.router)

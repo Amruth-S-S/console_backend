@@ -38,6 +38,8 @@ dmc_accounts_collection = db["dmc_accounts"]
 # Admin-curated "upcoming departures" (month, dates, package, land cost),
 # shown to every logged-in user at the top of the Overview dashboard.
 upcoming_packages_collection = db["upcoming_packages"]
+# Admin-only offer targets — one document per package + target amount row.
+offers_collection = db["offers"]
 
 
 async def ensure_indexes():
