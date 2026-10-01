@@ -331,7 +331,6 @@ class DmcAccountCreate(BaseModel):
     slNo: str = ""
     name: str = ""
     travelDate: str = ""
-    paymentDate: str = ""
     paymentFrom: str = ""
     paymentTo: str = ""
     paymentMode: str = ""  # same options as AccountEntryCreate.paymentMode
@@ -341,7 +340,27 @@ class DmcAccountCreate(BaseModel):
     # Pre-filled on the frontend as travelers x per-person quotation, but
     # stored as typed so a negotiated total can override it.
     totalAmount: str = ""
+    quotationAmount: str = ""
+    amountPaid: str = ""
+    # Always quotationAmount - amountPaid — recomputed here on every save, so
+    # whatever the client sends for it is ignored.
+    balance: str = ""
     note: str = ""
+
+    @model_validator(mode="after")
+    def _compute_balance(self):
+        def num(v: str) -> float:
+            try:
+                return float((v or "").replace(",", "").strip() or 0)
+            except ValueError:
+                return 0.0
+
+        if self.quotationAmount.strip() or self.amountPaid.strip():
+            bal = num(self.quotationAmount) - num(self.amountPaid)
+            self.balance = str(int(bal)) if bal == int(bal) else f"{bal:.2f}"
+        else:
+            self.balance = ""
+        return self
 
 
 class DmcAccountOut(DmcAccountCreate):
