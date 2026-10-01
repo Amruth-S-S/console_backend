@@ -340,10 +340,10 @@ class DmcAccountCreate(BaseModel):
     # Pre-filled on the frontend as travelers x per-person quotation, but
     # stored as typed so a negotiated total can override it.
     totalAmount: str = ""
-    quotationAmount: str = ""
-    amountPaid: str = ""
-    # Always quotationAmount - amountPaid — recomputed here on every save, so
-    # whatever the client sends for it is ignored.
+    debit: str = ""
+    credit: str = ""
+    # Always debit - credit — recomputed here on every save, so whatever the
+    # client sends for it is ignored.
     balance: str = ""
     note: str = ""
 
@@ -355,8 +355,8 @@ class DmcAccountCreate(BaseModel):
             except ValueError:
                 return 0.0
 
-        if self.quotationAmount.strip() or self.amountPaid.strip():
-            bal = num(self.quotationAmount) - num(self.amountPaid)
+        if self.debit.strip() or self.credit.strip():
+            bal = num(self.debit) - num(self.credit)
             self.balance = str(int(bal)) if bal == int(bal) else f"{bal:.2f}"
         else:
             self.balance = ""
@@ -368,6 +368,8 @@ class DmcAccountOut(DmcAccountCreate):
     createdAt: str
     createdBy: str = ""
     approved: bool = False
+    # Same receipts/proof uploads as the Account ledger (app/attachments.py).
+    attachments: list[AccountAttachmentMeta] = Field(default_factory=list)
 
 
 # Upcoming package departure — admin-managed, read by everyone on the

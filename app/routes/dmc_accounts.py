@@ -2,9 +2,22 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
 from pymongo import ReturnDocument
+from ..attachments import (
+    LIST_PROJECTION,
+    add_attachment,
+    attachments_meta,
+    get_attachment as get_attachment_file,
+    remove_attachment,
+)
 from ..db import access_collection, dmc_accounts_collection
 from ..deps import CurrentUser, get_current_user, user_role_names
-from ..schemas import ApprovalUpdate, DmcAccountCreate, DmcAccountOut
+from ..schemas import (
+    AccountAttachmentOut,
+    AccountAttachmentUpload,
+    ApprovalUpdate,
+    DmcAccountCreate,
+    DmcAccountOut,
+)
 
 router = APIRouter(prefix="/dmc-accounts", tags=["dmc-accounts"])
 
@@ -37,13 +50,18 @@ def _oid(entry_id: str) -> ObjectId:
     return ObjectId(entry_id)
 
 
+# Entries saved before the rename used quotationAmount / amountPaid.
+_LEGACY_KEYS = {"debit": "quotationAmount", "credit": "amountPaid"}
+
+
 def serialize(d: dict) -> DmcAccountOut:
-    fields = {k: d.get(k, "") for k in DmcAccountCreate.model_fields}
+    fields = {k: d.get(k) or d.get(_LEGACY_KEYS.get(k, ""), "") or "" for k in DmcAccountCreate.model_fields}
     return DmcAccountOut(
         id=str(d["_id"]),
         createdAt=d.get("createdAt", ""),
         createdBy=d.get("createdBy", ""),
         approved=bool(d.get("approved", False)),
+        attachments=attachments_meta(d),
         **fields,
     )
 
@@ -51,7 +69,7 @@ def serialize(d: dict) -> DmcAccountOut:
 @router.get("", response_model=list[DmcAccountOut])
 async def list_dmc_accounts(user: CurrentUser = Depends(get_current_user)):
     await require_dmc_permission(user, "view")
-    items = await dmc_accounts_collection.find().sort("_id", -1).to_list(1000)
+    items = await dmc_accounts_collection.find({}, LIST_PROJECTION).sort("_id", -1).to_list(1000)
     return [serialize(d) for d in items]
 
 
@@ -90,6 +108,7 @@ async def set_approval(
         {"_id": _oid(entry_id)},
         {"$set": {"approved": body.approved}},
         return_document=ReturnDocument.AFTER,
+        projection=LIST_PROJECTION,
     )
     if not updated:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found")
@@ -106,6 +125,7 @@ async def update_dmc_account(
         {"_id": _oid(entry_id)},
         {"$set": body.model_dump()},
         return_document=ReturnDocument.AFTER,
+        projection=LIST_PROJECTION,
     )
     if not updated:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found")
@@ -118,3 +138,29 @@ async def delete_dmc_account(entry_id: str, user: CurrentUser = Depends(get_curr
     res = await dmc_accounts_collection.delete_one({"_id": _oid(entry_id)})
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found")
+
+
+@router.post("/{entry_id}/attachments", response_model=DmcAccountOut, status_code=201)
+async def upload_attachment(
+    entry_id: str, body: AccountAttachmentUpload, user: CurrentUser = Depends(get_current_user)
+):
+    # Same rules as the Account ledger: attaching proof only needs "view",
+    # removing it needs "delete".
+    await require_dmc_permission(user, "view")
+    return serialize(await add_attachment(dmc_accounts_collection, entry_id, body, user))
+
+
+@router.get("/{entry_id}/attachments/{attachment_id}", response_model=AccountAttachmentOut)
+async def get_attachment(
+    entry_id: str, attachment_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    await require_dmc_permission(user, "view")
+    return await get_attachment_file(dmc_accounts_collection, entry_id, attachment_id)
+
+
+@router.delete("/{entry_id}/attachments/{attachment_id}", response_model=DmcAccountOut)
+async def delete_attachment(
+    entry_id: str, attachment_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    await require_dmc_permission(user, "delete")
+    return serialize(await remove_attachment(dmc_accounts_collection, entry_id, attachment_id))
