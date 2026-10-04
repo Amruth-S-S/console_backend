@@ -380,6 +380,10 @@ class UpcomingPackageCreate(BaseModel):
     dates: str = ""
     packageName: str = Field(min_length=1, max_length=200)
     landCost: str = ""
+    # "domestic" | "international" — splits the Overview strip into two rows.
+    # Blank on entries saved before this existed; the frontend then infers it
+    # from the matching package.
+    packageType: str = ""
 
 
 class UpcomingPackageOut(UpcomingPackageCreate):
@@ -482,9 +486,9 @@ class RoomEntryCreate(BaseModel):
     # Snapshotted at save time, same reasoning as bookings' packageTitle —
     # survives the source package being renamed/deleted later.
     packageTitle: str = ""
+    # Set by the frontend to the first traveller's name (there's no client
+    # picker any more) so the list and PDFs still have a name to show.
     clientName: str = ""
-    # Auto-filled from the selected client's booking (see
-    # routes/bookings.py's /by-package), editable afterward.
     invoiceNumber: str = ""
     roomType: str = ""  # e.g. "Double" — see ROOM_TYPE_OPTIONS in the frontend
     numberOfRooms: str = ""

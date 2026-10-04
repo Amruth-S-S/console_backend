@@ -28,6 +28,7 @@ def serialize(d: dict) -> UpcomingPackageOut:
         dates=d.get("dates", ""),
         packageName=d.get("packageName", ""),
         landCost=d.get("landCost", ""),
+        packageType=d.get("packageType", ""),
     )
 
 
