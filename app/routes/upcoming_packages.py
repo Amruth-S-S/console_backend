@@ -3,15 +3,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
 from pymongo import ReturnDocument
 from ..db import upcoming_packages_collection
-from ..deps import CurrentUser, get_current_user
+from ..deps import CurrentUser, get_current_user, user_role_names
 from ..schemas import UpcomingPackageCreate, UpcomingPackageOut
 
 router = APIRouter(prefix="/upcoming-packages", tags=["upcoming-packages"])
 
 
-def require_admin(user: CurrentUser) -> None:
-    if user.role != "admin":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required")
+# Admin, or a user granted the "Upcoming Packages" menu on the Access page (or holding
+# a role with that name).
+async def require_manager(user: CurrentUser) -> None:
+    if user.role == "admin":
+        return
+    if "upcoming packages" not in await user_role_names(user.id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
 
 
 def _oid(entry_id: str) -> ObjectId:
@@ -42,7 +46,7 @@ async def list_upcoming(user: CurrentUser = Depends(get_current_user)):
 
 @router.post("", response_model=UpcomingPackageOut, status_code=201)
 async def create_upcoming(body: UpcomingPackageCreate, user: CurrentUser = Depends(get_current_user)):
-    require_admin(user)
+    await require_manager(user)
     doc = body.model_dump()
     doc["createdAt"] = datetime.now(timezone.utc).isoformat()
     res = await upcoming_packages_collection.insert_one(doc)
@@ -54,7 +58,7 @@ async def create_upcoming(body: UpcomingPackageCreate, user: CurrentUser = Depen
 async def update_upcoming(
     entry_id: str, body: UpcomingPackageCreate, user: CurrentUser = Depends(get_current_user)
 ):
-    require_admin(user)
+    await require_manager(user)
     updated = await upcoming_packages_collection.find_one_and_update(
         {"_id": _oid(entry_id)},
         {"$set": body.model_dump()},
@@ -67,7 +71,7 @@ async def update_upcoming(
 
 @router.delete("/{entry_id}", status_code=204)
 async def delete_upcoming(entry_id: str, user: CurrentUser = Depends(get_current_user)):
-    require_admin(user)
+    await require_manager(user)
     res = await upcoming_packages_collection.delete_one({"_id": _oid(entry_id)})
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found")

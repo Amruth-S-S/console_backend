@@ -1,8 +1,10 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
 from ..db import roles_collection, users_collection
 from ..schemas import LoginRequest, TokenResponse, UserOut
 from ..security import verify_password, create_token
+from ..deps import CurrentUser, get_current_user
+from ..menus import granted_menus
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -41,6 +43,7 @@ async def serialize(u: dict) -> UserOut:
         role=u["role"],
         roleIds=role_ids,
         roleNames=role_names,
+        menuAccess=granted_menus(u),
     )
 
 
@@ -51,3 +54,14 @@ async def login(body: LoginRequest):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     token = create_token(str(user["_id"]), user["role"])
     return TokenResponse(access_token=token, user=await serialize(user))
+
+
+@router.get("/me", response_model=UserOut)
+async def me(user: CurrentUser = Depends(get_current_user)):
+    # The frontend re-reads this on every page load, so role and menu
+    # changes made by an admin apply on the user's next refresh instead of
+    # only after they log out and back in.
+    u = await users_collection.find_one({"_id": ObjectId(user.id)})
+    if not u:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+    return await serialize(u)

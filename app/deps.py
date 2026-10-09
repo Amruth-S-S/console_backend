@@ -44,17 +44,19 @@ async def user_role_names(user_id: str) -> set[str]:
     # caller can just do `TARGET_NAME in names`.
     from .db import roles_collection, users_collection  # local import avoids a cycle at module load
 
+    from .menus import menu_role_names
+
     user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+    # Menus granted on the Access page count as holding that role.
+    names = set(menu_role_names(user_doc))
     role_ids = _effective_role_ids(user_doc) if user_doc else []
-    if not role_ids:
-        return set()
     object_ids = []
     for rid in role_ids:
         try:
             object_ids.append(ObjectId(rid))
         except Exception:
             continue
-    if not object_ids:
-        return set()
-    role_docs = await roles_collection.find({"_id": {"$in": object_ids}}).to_list(50)
-    return {(r.get("name", "") or "").strip().lower() for r in role_docs}
+    if object_ids:
+        role_docs = await roles_collection.find({"_id": {"$in": object_ids}}).to_list(50)
+        names |= {(r.get("name", "") or "").strip().lower() for r in role_docs}
+    return names

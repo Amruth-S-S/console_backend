@@ -5,6 +5,7 @@ from ..db import roles_collection, users_collection
 from ..deps import CurrentUser, get_current_user
 from ..schemas import UserCreate, UserOut, UserUpdate
 from ..security import hash_password
+from ..menus import granted_menus
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -43,6 +44,7 @@ def serialize(u: dict, roles_by_id: dict[str, str] | None = None) -> UserOut:
         role=u["role"],
         roleIds=role_ids,
         roleNames=role_names,
+        menuAccess=granted_menus(u),
     )
 
 

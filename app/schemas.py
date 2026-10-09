@@ -39,6 +39,9 @@ class UserOut(BaseModel):
     # so the frontend can gate UI on role NAMEs (e.g. "Account") without a
     # separate roles fetch just to resolve each id.
     roleNames: list[str] = Field(default_factory=list)
+    # Menus granted directly on the Access page (app/menus.py keys) — each
+    # unlocks that menu exactly like holding the role of the same name.
+    menuAccess: list[str] = Field(default_factory=list)
 
 
 class TokenResponse(BaseModel):
@@ -363,6 +366,53 @@ class DmcAccountCreate(BaseModel):
         return self
 
 
+# Hotel voucher — the service voucher sent to the ground handler / hotels.
+# Dates are yyyy-mm-dd; arrival/departure are yyyy-mm-ddTHH:MM (datetime-local).
+class VoucherGuest(BaseModel):
+    name: str = ""
+    passportNo: str = ""
+
+
+class VoucherHotel(BaseModel):
+    hotelName: str = ""
+    address: str = ""
+    refNo: str = ""
+    roomType: str = ""
+    checkIn: str = ""
+    checkOut: str = ""
+    rooms: str = ""
+    nights: str = ""  # pre-filled from check-in/out on the frontend, editable
+    city: str = ""
+
+
+class HotelVoucherCreate(BaseModel):
+    voucherNo: str = ""
+    date: str = ""
+    agent: str = "Ambaari Tours & Travels"
+    country: str = ""
+    nationality: str = ""
+    adults: str = ""
+    children: str = ""
+    contactPerson: str = ""
+    meetingPoint: str = ""
+    boardName: str = ""
+    arrival: str = ""
+    arrivalFlight: str = ""
+    departure: str = ""
+    departureFlight: str = ""
+    specialRequirements: str = ""
+    guests: list[VoucherGuest] = Field(default_factory=list, max_length=60)
+    hotels: list[VoucherHotel] = Field(default_factory=list, max_length=30)
+    holidayPackage: str = ""  # one item per line
+    transferDetail: str = ""  # one item per line
+
+
+class HotelVoucherOut(HotelVoucherCreate):
+    id: str
+    createdAt: str
+    createdBy: str = ""
+
+
 class DmcAccountOut(DmcAccountCreate):
     id: str
     createdAt: str
@@ -450,6 +500,15 @@ class AccessOut(BaseModel):
     userId: str
     userName: str
     grants: list[AccessGrant]
+
+
+class MenuAccessUpdate(BaseModel):
+    menus: list[str] = Field(default_factory=list)
+
+
+class MenuAccessOut(BaseModel):
+    userId: str
+    menus: list[str]
 
 
 # Room list ("rooming list") — the passenger-manifest-style document travel

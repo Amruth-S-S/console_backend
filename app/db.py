@@ -35,6 +35,9 @@ rooms_collection = db["rooms"]
 # DMC (destination management company) payment ledger — same gating shape
 # as accounts/currency: admin plus users assigned the "DMC Account" role.
 dmc_accounts_collection = db["dmc_accounts"]
+# Hotel vouchers — same gating as the ledgers: admin plus users assigned the
+# "Hotel Voucher" role (routes/hotel_vouchers.py).
+hotel_vouchers_collection = db["hotel_vouchers"]
 # Admin-curated "upcoming departures" (month, dates, package, land cost),
 # shown to every logged-in user at the top of the Overview dashboard.
 upcoming_packages_collection = db["upcoming_packages"]

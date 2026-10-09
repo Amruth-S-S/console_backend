@@ -3,17 +3,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
 from pymongo import ReturnDocument
 from ..db import bookings_collection, offers_collection
-from ..deps import CurrentUser, get_current_user
+from ..deps import CurrentUser, get_current_user, user_role_names
 from ..schemas import MyOfferProgress, OfferBulkCreate, OfferCreate, OfferOut
 
 router = APIRouter(prefix="/offers", tags=["offers"])
 
 
-# Every route except /my-progress is admin-only — the Offer Section menu is
-# admin-only too.
-def require_admin(user: CurrentUser) -> None:
-    if user.role != "admin":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required")
+# Every route except /my-progress needs admin, or a user granted the
+# "Offer Section" menu on the Access page (or holding a role with that name).
+async def require_manager(user: CurrentUser) -> None:
+    if user.role == "admin":
+        return
+    if "offer section" not in await user_role_names(user.id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
 
 
 def _oid(entry_id: str) -> ObjectId:
@@ -35,7 +37,7 @@ def serialize(d: dict) -> OfferOut:
 
 @router.get("", response_model=list[OfferOut])
 async def list_offers(user: CurrentUser = Depends(get_current_user)):
-    require_admin(user)
+    await require_manager(user)
     items = await offers_collection.find().sort("_id", -1).to_list(1000)
     return [serialize(d) for d in items]
 
@@ -115,7 +117,7 @@ async def my_progress(user: CurrentUser = Depends(get_current_user)):
 async def create_offers(body: OfferBulkCreate, user: CurrentUser = Depends(get_current_user)):
     # All rows from the modal in one request — saved together or not at all
     # (validation runs on the whole list before anything is inserted).
-    require_admin(user)
+    await require_manager(user)
     now = datetime.now(timezone.utc).isoformat()
     docs = [{**o.model_dump(), "createdAt": now, "createdBy": user.id} for o in body.offers]
     res = await offers_collection.insert_many(docs)
@@ -126,7 +128,7 @@ async def create_offers(body: OfferBulkCreate, user: CurrentUser = Depends(get_c
 
 @router.put("/{entry_id}", response_model=OfferOut)
 async def update_offer(entry_id: str, body: OfferCreate, user: CurrentUser = Depends(get_current_user)):
-    require_admin(user)
+    await require_manager(user)
     updated = await offers_collection.find_one_and_update(
         {"_id": _oid(entry_id)},
         {"$set": body.model_dump()},
@@ -139,7 +141,7 @@ async def update_offer(entry_id: str, body: OfferCreate, user: CurrentUser = Dep
 
 @router.delete("/{entry_id}", status_code=204)
 async def delete_offer(entry_id: str, user: CurrentUser = Depends(get_current_user)):
-    require_admin(user)
+    await require_manager(user)
     res = await offers_collection.delete_one({"_id": _oid(entry_id)})
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Offer not found")
