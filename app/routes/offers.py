@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
 from pymongo import ReturnDocument
 from ..db import bookings_collection, offers_collection
-from ..deps import CurrentUser, get_current_user, user_role_names
+from ..deps import CurrentUser, get_current_user, user_role_names
+from ..bulk import BulkImport, BulkImportResult, run_bulk
 from ..schemas import MyOfferProgress, OfferBulkCreate, OfferCreate, OfferOut
 
 router = APIRouter(prefix="/offers", tags=["offers"])
@@ -145,3 +146,13 @@ async def delete_offer(entry_id: str, user: CurrentUser = Depends(get_current_us
     res = await offers_collection.delete_one({"_id": _oid(entry_id)})
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Offer not found")
+
+
+async def _create_one_offer(item: OfferCreate, user: CurrentUser):
+    await create_offers(OfferBulkCreate(offers=[item]), user)
+
+
+@router.post("/bulk-import", response_model=BulkImportResult)
+async def bulk_import(body: BulkImport[OfferCreate], user: CurrentUser = Depends(get_current_user)):
+    # CSV import from the Offer Section list.
+    return await run_bulk(body.items, _create_one_offer, user)

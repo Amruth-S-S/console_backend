@@ -3,6 +3,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from ..db import roles_collection, users_collection
 from ..deps import CurrentUser, get_current_user
+from ..bulk import BulkImport, BulkImportResult, run_bulk
 from ..schemas import UserCreate, UserOut, UserUpdate
 from ..security import hash_password
 from ..menus import granted_menus
@@ -119,3 +120,10 @@ async def delete_user(user_id: str, user: CurrentUser = Depends(get_current_user
     )
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+
+@router.post("/bulk-import", response_model=BulkImportResult)
+async def bulk_import(body: BulkImport[UserCreate], user: CurrentUser = Depends(get_current_user)):
+    # CSV import from the list page — every row validated up front, then each
+    # created through create_user (same checks/side effects as adding one by hand).
+    return await run_bulk(body.items, create_user, user)

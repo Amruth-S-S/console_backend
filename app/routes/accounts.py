@@ -10,7 +10,8 @@ from ..attachments import (
     remove_attachment,
 )
 from ..db import access_collection, accounts_collection
-from ..deps import CurrentUser, get_current_user, user_role_names
+from ..deps import CurrentUser, get_current_user, user_role_names
+from ..bulk import BulkImport, BulkImportResult, run_bulk
 from ..schemas import (
     AccountAttachmentOut,
     AccountAttachmentUpload,
@@ -185,3 +186,10 @@ async def delete_attachment(
     # deleting the ledger row itself.
     await require_account_permission(user, "delete")
     return serialize(await remove_attachment(accounts_collection, entry_id, attachment_id))
+
+
+@router.post("/bulk-import", response_model=BulkImportResult)
+async def bulk_import(body: BulkImport[AccountEntryCreate], user: CurrentUser = Depends(get_current_user)):
+    # CSV import from the list page — every row validated up front, then each
+    # created through create_account (same checks/side effects as adding one by hand).
+    return await run_bulk(body.items, create_account, user)

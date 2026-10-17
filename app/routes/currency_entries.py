@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from bson import ObjectId
 from pymongo import ReturnDocument
 from ..db import access_collection, currency_entries_collection
-from ..deps import CurrentUser, get_current_user, user_role_names
+from ..deps import CurrentUser, get_current_user, user_role_names
+from ..bulk import BulkImport, BulkImportResult, run_bulk
 from ..schemas import ApprovalUpdate, CurrencyEntryCreate, CurrencyEntryOut
 
 router = APIRouter(prefix="/currency-entries", tags=["currency-entries"])
@@ -135,3 +136,10 @@ async def delete_currency_entry(entry_id: str, user: CurrentUser = Depends(get_c
     res = await currency_entries_collection.delete_one({"_id": ObjectId(entry_id)})
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found")
+
+
+@router.post("/bulk-import", response_model=BulkImportResult)
+async def bulk_import(body: BulkImport[CurrencyEntryCreate], user: CurrentUser = Depends(get_current_user)):
+    # CSV import from the list page — every row validated up front, then each
+    # created through create_currency_entry (same checks/side effects as adding one by hand).
+    return await run_bulk(body.items, create_currency_entry, user)

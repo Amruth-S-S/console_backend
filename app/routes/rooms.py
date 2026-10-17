@@ -4,6 +4,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from ..db import access_collection, rooms_collection
 from ..deps import CurrentUser, get_current_user, user_role_names
+from ..bulk import BulkImport, BulkImportResult, run_bulk
 from ..schemas import RoomEntryCreate, RoomEntryOut
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
@@ -101,3 +102,10 @@ async def delete_room(entry_id: str, user: CurrentUser = Depends(get_current_use
     res = await rooms_collection.delete_one({"_id": ObjectId(entry_id)})
     if res.deleted_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found")
+
+
+@router.post("/bulk-import", response_model=BulkImportResult)
+async def bulk_import(body: BulkImport[RoomEntryCreate], user: CurrentUser = Depends(get_current_user)):
+    # CSV import from the list page — every row validated up front, then each
+    # created through create_room (same checks/side effects as adding one by hand).
+    return await run_bulk(body.items, create_room, user)
